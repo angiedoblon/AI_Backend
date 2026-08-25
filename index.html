@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health Risk Assessor</title>
+    <style>
+        :root {
+            --bg-canvas: #e5e7eb;
+            --panel-bg: #33343a;
+            --card-inner: #222429;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --accent-blue: #3b82f6;
+            --accent-green: #359ab7;
+            --accent-red: #ef4444;
+            --border-color: #2e323b;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            max-width: 620px; 
+            margin: 40px auto; 
+            padding: 25px; 
+            background-color: var(--bg-canvas);
+            color: var(--text-main);
+        }
+
+        .container {
+            background-color: var(--panel-bg);
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+            border: 1px solid #d1d5db;
+        }
+
+        h2 { 
+            text-align: left; 
+            color: #ffffff; 
+            margin: 0 0 20px 0; 
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 14px; 
+        }
+
+        label { 
+            font-weight: 500; 
+            font-size: 11px; 
+            color: var(--text-muted); 
+            display: block; 
+            margin-bottom: 5px; 
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, select { 
+            width: 100%; 
+            padding: 10px 12px; 
+            border: 1px solid var(--border-color); 
+            border-radius: 8px; 
+            box-sizing: border-box; 
+            font-size: 14px; 
+            background-color: var(--card-inner);
+            color: #ffffff;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .full-width { grid-column: span 2; }
+        .btn-group { display: flex; gap: 10px; margin-top: 6px; }
+
+        button { 
+            flex: 1; 
+            padding: 12px; 
+            border: none; 
+            border-radius: 8px; 
+            font-size: 14px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            transition: opacity 0.2s; 
+        }
+
+        .btn-predict { background-color: var(--text-main); color: #111827; }
+        .btn-predict:hover { opacity: 0.9; }
+        .btn-reset { background-color: var(--card-inner); color: var(--text-muted); border: 1px solid var(--border-color); }
+        .btn-reset:hover { background-color: var(--border-color); color: #ffffff; }
+
+        /* Dark Modern Result Dashboard */
+        #result-card { 
+            margin-top: 25px; 
+            padding: 24px; 
+            border-radius: 12px; 
+            display: none; 
+            background-color: var(--card-inner);
+            border: 1px solid var(--border-color);
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .result-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #ffffff;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-low { background-color: #10b98120; color: var(--accent-green); border: 1px solid #05503740; }
+        .badge-high { background-color: #ef444420; color: var(--accent-red); border: 1px solid #ef444440; }
+
+        .meter-container {
+            width: 100%;
+            background-color: #111317;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0 20px 0;
+        }
+
+        .meter-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 4px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 16px;
+        }
+
+        .detail-block {
+            background-color: var(--panel-bg);
+            padding: 12px 14px;
+            border-radius: 8px;
+            border: 1px solid #2a2d35;
+        }
+
+        .detail-block-title {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .detail-block-content {
+            font-size: 13px;
+            color: var(--text-main);
+            line-height: 1.4;
+        }
+
+        .detail-block-content ul {
+            margin: 0;
+            padding-left: 16px;
+        }
+
+        .detail-block-content li {
+            margin-bottom: 4px;
+        }
+
+        .full-block {
+            grid-column: span 2;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Health Risk Assessor</h2>
+        
+        <form id="healthForm">
+            <div class="grid">
+                <div>
+                    <label>Age (1-120)</label>
+                    <input type="number" id="Age" value="25" required>
+                </div>
+                <div>
+                    <label>Sex</label>
+                    <select id="Sex">
+                        <option value="M">Male</option>
+                        <option value="F">Female</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Resting BP (mmHg)</label>
+                    <input type="number" id="RestingBP" value="110" required>
+                </div>
+                <div>
+                    <label>Cholesterol (mg/dl)</label>
+                    <input type="number" id="Cholesterol" value="150" required>
+                </div>
+                <div>
+                    <label>Max Heart Rate</label>
+                    <input type="number" id="MaxHR" value="170" required>
+                </div>
+                <div>
+                    <label>Fasting Blood Sugar > 120</label>
+                    <select id="FastingBS">
+                        <option value="0">No (Normal)</option>
+                        <option value="1">Yes (High)</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Chest Pain Type</label>
+                    <select id="ChestPainType">
+                        <option value="ATA">Atypical Angina</option>
+                        <option value="NAP">Non-Anginal Pain</option>
+                        <option value="ASY">Asymptomatic</option>
+                        <option value="TA">Typical Angina</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Exercise Angina</label>
+                    <select id="ExerciseAngina">
+                        <option value="N">No</option>
+                        <option value="Y">Yes</option>
+                    </select>
+                </div>
+                <div>
+                    <label>ST Slope</label>
+                    <select id="ST_Slope">
+                        <option value="Up">Up-sloping</option>
+                        <option value="Flat">Flat</option>
+                        <option value="Down">Down-sloping</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Oldpeak (Depression)</label>
+                    <input type="number" step="0.1" id="Oldpeak" value="0.0" required>
+                </div>
+                <div class="full-width">
+                    <label>Resting ECG</label>
+                    <select id="RestingECG">
+                        <option value="Normal">Normal</option>
+                        <option value="ST">ST-T Wave Abnormality</option>
+                        <option value="LVH">Left Ventricular Hypertrophy</option>
+                    </select>
+                </div>
+                <div class="full-width btn-group">
+                    <button type="button" class="btn-predict" onclick="predictRisk()">Evaluate Assessment</button>
+                    <button type="reset" class="btn-reset" onclick="resetForm()">Reset</button>
+                </div>
+            </div>
+        </form>
+
+        <div id="result-card">
+            <div class="result-header">
+                <h3 class="result-title" id="result-title">---</h3>
+                <span id="result-badge" class="status-badge">---</span>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 500; color: var(--text-muted);">
+                <span>Probability Score</span>
+                <span id="result-prob" style="color: #ffffff; font-weight: 600;">0%</span>
+            </div>
+            
+            <div class="meter-container">
+                <div id="meter-fill" class="meter-fill"></div>
+            </div>
+
+            <div class="details-grid">
+                <div class="detail-block">
+                    <div class="detail-block-title">Primary Factors</div>
+                    <div class="detail-block-content" id="primary-factors">--</div>
+                </div>
+                
+                <div class="detail-block">
+                    <div class="detail-block-title">ECG & Stress Profile</div>
+                    <div class="detail-block-content" id="ecg-profile">--</div>
+                </div>
+
+                <div class="detail-block full-block">
+                    <div class="detail-block-title">Clinical Summary & Next Steps</div>
+                    <div class="detail-block-content" id="clinical-summary">--</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function predictRisk() {
+            const age = parseInt(document.getElementById('Age').value);
+            const bp = parseInt(document.getElementById('RestingBP').value);
+            const cholesterol = parseInt(document.getElementById('Cholesterol').value);
+            const maxHR = parseInt(document.getElementById('MaxHR').value);
+            const oldpeak = parseFloat(document.getElementById('Oldpeak').value);
+            const chestPain = document.getElementById('ChestPainType').value;
+            const exerciseAngina = document.getElementById('ExerciseAngina').value;
+            const stSlope = document.getElementById('ST_Slope').value;
+            const fastingBS = parseInt(document.getElementById('FastingBS').value);
+
+            // Validation Checks
+            if (isNaN(age) || age < 1 || age > 120) { alert("Please enter a valid Age between 1 and 120."); return; }
+            if (isNaN(bp) || bp < 50 || bp > 250) { alert("Please enter a valid Resting Blood Pressure between 50 and 250 mmHg."); return; }
+            if (isNaN(cholesterol) || cholesterol < 50 || cholesterol > 600) { alert("Please enter a valid Cholesterol level between 50 and 600 mg/dl."); return; }
+            if (isNaN(maxHR) || maxHR < 60 || maxHR > 220) { alert("Please enter a valid Maximum Heart Rate between 60 and 220."); return; }
+            if (isNaN(oldpeak) || oldpeak < 0 || oldpeak > 10) { alert("Please enter a valid Oldpeak value between 0.0 and 10.0."); return; }
+
+            const payload = {
+                Age: age,
+                Sex: document.getElementById('Sex').value,
+                ChestPainType: chestPain,
+                RestingBP: bp,
+                Cholesterol: cholesterol,
+                FastingBS: fastingBS,
+                RestingECG: document.getElementById('RestingECG').value,
+                MaxHR: maxHR,
+                ExerciseAngina: exerciseAngina,
+                Oldpeak: oldpeak,
+                ST_Slope: stSlope
+            };
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.status === 422) {
+                    alert("Backend Validation Error: Received values outside permitted range.");
+                    return;
+                }
+
+                const data = await response.json();
+                const card = document.getElementById('result-card');
+                const fill = document.getElementById('meter-fill');
+                
+                card.style.display = 'block';
+                const probability = data.risk_probability_percent;
+
+                document.getElementById('result-prob').innerText = probability + '%';
+                setTimeout(() => { fill.style.width = probability + '%'; }, 50);
+
+                // Build Detailed Breakdown Sections
+                let factorsHtml = '<ul>';
+                if (cholesterol > 200) factorsHtml += `<li>Elevated Cholesterol (${cholesterol} mg/dl)</li>`;
+                if (bp > 130) factorsHtml += `<li>High Resting BP (${bp} mmHg)</li>`;
+                if (fastingBS === 1) factorsHtml += `<li>Fasting BS > 120 mg/dl</li>`;
+                if (factorsHtml === '<ul>') factorsHtml += `<li>Vitals within target range</li>`;
+                factorsHtml += '</ul>';
+                document.getElementById('primary-factors').innerHTML = factorsHtml;
+
+                let ecgHtml = '<ul>';
+                if (stSlope !== 'Up') ecgHtml += `<li>Non-optimal ST Slope (${stSlope})</li>`;
+                if (exerciseAngina === 'Y') ecgHtml += `<li>Exercise-Induced Angina</li>`;
+                if (oldpeak > 1.0) ecgHtml += `<li>ST Depression (${oldpeak})</li>`;
+                if (ecgHtml === '<ul>') ecgHtml += `<li>Normal stress test profile</li>`;
+                ecgHtml += '</ul>';
+                document.getElementById('ecg-profile').innerHTML = ecgHtml;
+
+                // High vs Low UI Theme Styling
+                const badge = document.getElementById('result-badge');
+                if (data.heart_disease_risk === 1) {
+                    document.getElementById('result-title').innerText = "High Risk Level";
+                    badge.innerText = "Elevated";
+                    badge.className = "status-badge badge-high";
+                    fill.style.backgroundColor = "var(--accent-red)";
+                    document.getElementById('clinical-summary').innerText = 
+                        "Multiple parameters suggest an elevated cardiovascular risk profile. Recommended next step: consult a medical specialist for a complete diagnostic panel.";
+                } else {
+                    document.getElementById('result-title').innerText = "Low Risk Level";
+                    badge.innerText = "Standard";
+                    badge.className = "status-badge badge-low";
+                    fill.style.backgroundColor = "var(--accent-green)";
+                    document.getElementById('clinical-summary').innerText = 
+                        "Parameters fall within normal reference ranges. Maintain regular physical activity, balanced nutrition, and standard annual wellness monitoring.";
+                }
+
+            } catch (err) {
+                alert("Could not connect to server. Ensure FastAPI backend is running.");
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('result-card').style.display = 'none';
+            document.getElementById('meter-fill').style.width = '0%';
+        }
+    </script>
+</body>
+</html>
