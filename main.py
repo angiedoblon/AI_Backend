@@ -1,7 +1,10 @@
+import csv
 from datetime import datetime
+import io
 import sqlite3
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 app = FastAPI()
@@ -151,3 +154,53 @@ def get_history():
     ]
 
     return {"history": history}
+
+
+@app.get("/export-csv")
+def export_csv():
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, timestamp, age, sex, chest_pain_type, resting_bp, cholesterol, 
+               fasting_bs, resting_ecg, max_hr, exercise_angina, oldpeak, st_slope, 
+               risk_score, risk_level 
+        FROM predictions 
+        ORDER BY id DESC
+    """
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header Row
+    writer.writerow(
+        [
+            "ID",
+            "Timestamp",
+            "Age",
+            "Sex",
+            "ChestPainType",
+            "RestingBP",
+            "Cholesterol",
+            "FastingBS",
+            "RestingECG",
+            "MaxHR",
+            "ExerciseAngina",
+            "Oldpeak",
+            "ST_Slope",
+            "RiskScore",
+            "RiskLevel",
+        ]
+    )
+
+    # Data Rows
+    for row in rows:
+        writer.writerow(row)
+
+    output.seek(0)
+
+    headers = {"Content-Disposition": 'attachment; filename="patient_records.csv"'}
+    return StreamingResponse(output, media_type="text/csv", headers=headers)
