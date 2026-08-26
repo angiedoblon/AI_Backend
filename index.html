@@ -21,9 +21,8 @@
             --accent-red: #f87171;
             --border-color: #2e323e;
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
-
+        html { scroll-behavior: smooth; }
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             background-color: var(--bg-canvas);
@@ -31,7 +30,6 @@
             display: flex;
             min-height: 100vh;
         }
-
         /* Navigation Sidebar */
         .sidebar {
             width: 220px;
@@ -41,8 +39,10 @@
             display: flex;
             flex-direction: column;
             gap: 20px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
         }
-
         .brand-logo {
             font-size: 16px;
             font-weight: 700;
@@ -52,7 +52,6 @@
             gap: 10px;
             margin-bottom: 10px;
         }
-
         .nav-item {
             padding: 10px 14px;
             border-radius: 8px;
@@ -66,12 +65,10 @@
             transition: all 0.2s;
             cursor: pointer;
         }
-
         .nav-item.active, .nav-item:hover {
             background-color: #2b2e3a;
             color: #ffffff;
         }
-
         /* Main Dashboard Shell */
         .main-content {
             flex: 1;
@@ -81,7 +78,6 @@
             flex-direction: column;
             gap: 20px;
         }
-
         /* Header Bar */
         .top-header {
             display: flex;
@@ -89,19 +85,16 @@
             align-items: center;
             margin-bottom: 10px;
         }
-
         .top-header h1 {
             font-size: 22px;
             font-weight: 600;
         }
-
         .user-profile {
             display: flex;
             align-items: center;
             gap: 12px;
             font-size: 13px;
         }
-
         .avatar {
             width: 36px;
             height: 36px;
@@ -113,14 +106,12 @@
             font-weight: 700;
             color: #fff;
         }
-
         /* Metric Summary Cards */
         .metrics-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 16px;
         }
-
         .metric-card {
             background-color: var(--panel-bg);
             border: 1px solid var(--border-color);
@@ -130,35 +121,21 @@
             flex-direction: column;
             gap: 8px;
         }
-
-        .metric-icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-        }
-
         .metric-title { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
         .metric-value { font-size: 20px; font-weight: 700; color: #ffffff; }
         .metric-sub { font-size: 11px; color: var(--accent-cyan); }
-
         /* Content Layout Grids */
         .dashboard-grid {
             display: grid;
             grid-template-columns: 1.8fr 1fr;
             gap: 20px;
         }
-
         .panel {
             background-color: var(--panel-bg);
             border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 20px;
         }
-
         .panel-title {
             font-size: 15px;
             font-weight: 600;
@@ -168,14 +145,12 @@
             justify-content: space-between;
             align-items: center;
         }
-
         /* Input Form */
         .form-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 12px;
         }
-
         label {
             font-size: 11px;
             color: var(--text-muted);
@@ -184,7 +159,6 @@
             font-weight: 600;
             text-transform: uppercase;
         }
-
         input, select {
             width: 100%;
             padding: 9px 12px;
@@ -194,16 +168,12 @@
             color: #ffffff;
             font-size: 13px;
         }
-
         input:focus, select:focus {
             outline: none;
             border-color: var(--accent-green);
         }
-
         .full-width { grid-column: span 2; }
-
         .btn-group { display: flex; gap: 10px; margin-top: 10px; }
-
         button {
             flex: 1;
             padding: 10px;
@@ -214,10 +184,8 @@
             cursor: pointer;
             transition: opacity 0.2s;
         }
-
         .btn-predict { background-color: var(--accent-green); color: #0f172a; }
         .btn-reset { background-color: var(--card-inner); color: var(--text-muted); border: 1px solid var(--border-color); }
-
         /* Dynamic Score Output */
         .gauge-container {
             display: flex;
@@ -227,7 +195,6 @@
             margin: 20px 0;
             position: relative;
         }
-
         .gauge-score {
             font-size: 28px;
             font-weight: 700;
@@ -235,7 +202,6 @@
             bottom: 10px;
             color: #ffffff;
         }
-
         .status-badge {
             font-size: 11px;
             font-weight: 700;
@@ -245,7 +211,6 @@
         }
         .badge-low { background-color: #0d948830; color: var(--accent-cyan); border: 1px solid var(--accent-cyan); }
         .badge-high { background-color: #ef444430; color: var(--accent-red); border: 1px solid var(--accent-red); }
-
         /* History Table Styling */
         .history-table {
             width: 100%;
@@ -253,7 +218,6 @@
             font-size: 12px;
             text-align: left;
         }
-
         .history-table th {
             color: var(--text-muted);
             font-weight: 600;
@@ -261,12 +225,10 @@
             padding: 10px 8px;
             border-bottom: 1px solid var(--border-color);
         }
-
         .history-table td {
             padding: 12px 8px;
             border-bottom: 1px solid #262833;
         }
-
         .btn-refresh {
             background-color: var(--card-inner);
             color: var(--text-main);
@@ -280,16 +242,15 @@
     </style>
 </head>
 <body>
-
     <!-- Left Navigation Bar -->
     <div class="sidebar">
         <div class="brand-logo">
-            <span>🩺</span> Health Risk Risk Assessment
+            <span>🩺</span> Health Risk Assessment
         </div>
-        <a class="nav-item active">📊 Assessment Engine</a>
-        <a class="nav-item">📋 Patient Records</a>
-        <a class="nav-item">⚙️ Model Parameters</a>
-        <a class="nav-item" href="https://health-risk-api-chnx.onrender.com/export-csv" target="_blank">📥 Export CSV</a>
+        <a href="#assessment-engine" class="nav-item active" onclick="setActive(this)">📊 Assessment Engine</a>
+        <a href="#patient-records" class="nav-item" onclick="setActive(this)">📋 Patient Records</a>
+        <a href="#model-parameters" class="nav-item" onclick="setActive(this)">⚙️ Model Parameters</a>
+        <a href="https://health-risk-api-chnx.onrender.com/export-csv" class="nav-item" target="_blank">📥 Export CSV</a>
     </div>
 
     <!-- Main Content Area -->
@@ -304,8 +265,8 @@
             </div>
         </div>
 
-        <!-- Metric Summary Cards -->
-        <div class="metrics-grid">
+        <!-- Metric Summary Cards / Model Parameters Section -->
+        <div class="metrics-grid" id="model-parameters">
             <div class="metric-card">
                 <div class="metric-title">Target Cholesterol</div>
                 <div class="metric-value">200 mg/dl</div>
@@ -329,7 +290,7 @@
         </div>
 
         <!-- Middle Section: Form Input & Prediction Score Gauge -->
-        <div class="dashboard-grid">
+        <div class="dashboard-grid" id="assessment-engine">
             
             <!-- Assessment Input Form Panel -->
             <div class="panel">
@@ -423,17 +384,15 @@
                         <div class="gauge-score" id="result-prob">--%</div>
                     </div>
                 </div>
-
                 <div style="background-color: var(--card-inner); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 12px; color: var(--text-muted);">
                     <div style="font-weight: 600; color: #fff; margin-bottom: 6px;">Primary Assessment Notes:</div>
                     <div id="clinical-summary">Submit patient vitals on the left to compute live cardiovascular risk probability scores.</div>
                 </div>
             </div>
-
         </div>
 
-        <!-- History Dashboard Panel -->
-        <div class="panel">
+        <!-- History Dashboard Panel / Patient Records Section -->
+        <div class="panel" id="patient-records">
             <div class="panel-title">
                 <span>Recent Submissions History</span>
                 <button class="btn-refresh" onclick="loadHistory()">Refresh Records</button>
@@ -458,19 +417,22 @@
                 </table>
             </div>
         </div>
-
     </div>
 
     <script>
         let gaugeChartInstance = null;
 
+        function setActive(element) {
+            const items = document.querySelectorAll('.sidebar .nav-item');
+            items.forEach(item => item.classList.remove('active'));
+            element.classList.add('active');
+        }
+
         // Initialize Gauge Arc Chart
         function initGauge(score = 0, isHigh = false) {
             const ctx = document.getElementById('gaugeChart').getContext('2d');
             if (gaugeChartInstance) gaugeChartInstance.destroy();
-
             const fillColor = isHigh ? '#f87171' : '#38bdf8';
-
             gaugeChartInstance = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
@@ -541,7 +503,6 @@
 
                 initGauge(probability, isHigh);
                 loadHistory();
-
             } catch (err) {
                 alert("Could not connect to backend server.");
             }
@@ -558,6 +519,7 @@
                     tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 15px;">No submission records found.</td></tr>`;
                     return;
                 }
+
                 data.history.forEach(item => {
                     const isHigh = item.risk_level === 'High';
                     const badgeStyle = isHigh ? 'color: var(--accent-red);' : 'color: var(--accent-cyan);';
