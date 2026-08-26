@@ -1,8 +1,8 @@
-import sqlite3
 from datetime import datetime
+import sqlite3
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 app = FastAPI()
 
@@ -16,7 +16,7 @@ app.add_middleware(
 )
 
 
-# Initialize Database
+# Initialize Database with full schema
 def init_db():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
@@ -25,9 +25,17 @@ def init_db():
         CREATE TABLE IF NOT EXISTS predictions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT,
-            age REAL,
-            bmi REAL,
-            blood_pressure REAL,
+            age INTEGER,
+            sex TEXT,
+            chest_pain_type TEXT,
+            resting_bp INTEGER,
+            cholesterol INTEGER,
+            fasting_bs INTEGER,
+            resting_ecg TEXT,
+            max_hr INTEGER,
+            exercise_angina TEXT,
+            oldpeak REAL,
+            st_slope TEXT,
             risk_score REAL,
             risk_level TEXT
         )
@@ -40,11 +48,19 @@ def init_db():
 init_db()
 
 
-# Input Schema
+# Input Schema - Matching exact keys sent by index.html
 class PatientData(BaseModel):
-    age: float
-    bmi: float
-    blood_pressure: float
+    Age: int = Field(..., ge=1, le=120)
+    Sex: str
+    ChestPainType: str
+    RestingBP: int = Field(..., ge=50, le=250)
+    Cholesterol: int = Field(..., ge=50, le=600)
+    FastingBS: int = Field(..., ge=0, le=1)
+    RestingECG: str
+    MaxHR: int = Field(..., ge=60, le=220)
+    ExerciseAngina: str
+    Oldpeak: float = Field(..., ge=0.0, le=10.0)
+    ST_Slope: str
 
 
 @app.get("/")
@@ -54,27 +70,55 @@ def home():
 
 @app.post("/predict")
 def predict(data: PatientData):
-    # Dummy calculation logic (replace with your joblib model scoring)
-    risk_score = round((data.age * 0.2) + (data.bmi * 0.5) + (data.blood_pressure * 0.3), 2)
-    risk_level = "High" if risk_score > 70 else "Moderate" if risk_score > 40 else "Low"
+    # Dummy calculation logic (replace with model.predict if using joblib)
+    risk_score = round(
+        (data.Age * 0.3)
+        + (data.RestingBP * 0.2)
+        + (data.Cholesterol * 0.1)
+        + (data.Oldpeak * 5.0),
+        1,
+    )
+    risk_probability = min(risk_score, 100.0)
+    heart_disease_risk = 1 if risk_probability > 50.0 else 0
+    risk_level = "High" if heart_disease_risk == 1 else "Low"
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Save to SQLite Database
+    # Save complete record to SQLite Database
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT INTO predictions (timestamp, age, bmi, blood_pressure, risk_score, risk_level)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO predictions (
+            timestamp, age, sex, chest_pain_type, resting_bp, cholesterol, 
+            fasting_bs, resting_ecg, max_hr, exercise_angina, oldpeak, st_slope, 
+            risk_score, risk_level
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
-        (timestamp, data.age, data.bmi, data.blood_pressure, risk_score, risk_level),
+        (
+            timestamp,
+            data.Age,
+            data.Sex,
+            data.ChestPainType,
+            data.RestingBP,
+            data.Cholesterol,
+            data.FastingBS,
+            data.RestingECG,
+            data.MaxHR,
+            data.ExerciseAngina,
+            data.Oldpeak,
+            data.ST_Slope,
+            risk_probability,
+            risk_level,
+        ),
     )
     conn.commit()
     conn.close()
 
     return {
-        "risk_score": risk_score,
+        "risk_probability_percent": risk_probability,
+        "heart_disease_risk": heart_disease_risk,
         "risk_level": risk_level,
         "timestamp": timestamp,
     }
@@ -85,7 +129,11 @@ def get_history():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT timestamp, age, bmi, blood_pressure, risk_score, risk_level FROM predictions ORDER BY id DESC LIMIT 10"
+        """
+        SELECT timestamp, age, resting_bp, cholesterol, risk_score, risk_level 
+        FROM predictions 
+        ORDER BY id DESC LIMIT 10
+    """
     )
     rows = cursor.fetchall()
     conn.close()
@@ -94,8 +142,8 @@ def get_history():
         {
             "timestamp": row[0],
             "age": row[1],
-            "bmi": row[2],
-            "blood_pressure": row[3],
+            "blood_pressure": row[2],
+            "bmi": row[3],  # Mapping cholesterol field to display column
             "risk_score": row[4],
             "risk_level": row[5],
         }
