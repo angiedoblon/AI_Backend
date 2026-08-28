@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 app = FastAPI()
 
+# Enable CORS for frontend requests (e.g., GitHub Pages)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -44,6 +45,55 @@ def init_db():
 @app.on_event("startup")
 def startup_event():
     init_db()
+
+@app.get("/")
+def root():
+    return {"status": "online", "message": "Health Risk Assessor API is active."}
+
+# Pydantic schema for incoming patient payload
+class HeartData(BaseModel):
+    Age: int = Field(..., example=45)
+    RestingBP: int = Field(..., example=120)
+    Cholesterol: int = Field(..., example=200)
+    Sex: str = Field(default="Male")
+    MaxHR: int = Field(default=150)
+    FastingBS: int = Field(default=0)
+    ChestPainType: str = Field(default="Atypical Angina")
+    ExerciseAngina: str = Field(default="No")
+    ST_Slope: str = Field(default="Up")
+    Oldpeak: float = Field(default=1.0)
+    RestingECG: str = Field(default="Normal")
+
+@app.post("/predict")
+def predict(payload: HeartData):
+    # Perform prediction logic / calculation
+    probability = 51.8  # Replace/bind with your model evaluation output
+    risk_level = "High" if probability >= 50 else "Low"
+
+    # Save incoming assessment to PostgreSQL database
+    if DATABASE_URL:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO predictions (age, blood_pressure, bmi, risk_score, risk_level)
+                VALUES (%s, %s, %s, %s, %s);
+                """,
+                (payload.Age, payload.RestingBP, payload.Cholesterol, probability, risk_level)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"Database insertion failed: {e}")
+
+    # Return key-values matched with client JS interface
+    return {
+        "heart_disease_risk": 1 if probability >= 50 else 0,
+        "risk_probability_percent": probability,
+        "risk_level": risk_level
+    }
 
 @app.get("/history")
 def get_history():
