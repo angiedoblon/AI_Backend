@@ -211,6 +211,20 @@
         }
         .badge-low { background-color: #0d948830; color: var(--accent-cyan); border: 1px solid var(--accent-cyan); }
         .badge-high { background-color: #ef444430; color: var(--accent-red); border: 1px solid var(--accent-red); }
+        
+        /* Filter Controls Styling */
+        .filter-controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .filter-controls input {
+            flex: 2;
+        }
+        .filter-controls select {
+            flex: 1;
+        }
+
         /* History Table Styling */
         .history-table {
             width: 100%;
@@ -299,7 +313,7 @@
                     <div class="form-grid">
                         <div>
                             <label>Age (1-120)</label>
-                            <input type="number" id="Age" value="45" required>
+                            <input type="number" id="Age" value="45" min="1" max="120" required>
                         </div>
                         <div>
                             <label>Sex</label>
@@ -309,16 +323,16 @@
                             </select>
                         </div>
                         <div>
-                            <label>Resting BP (mmHg)</label>
-                            <input type="number" id="RestingBP" value="120" required>
+                            <label>Resting BP (40-240 mmHg)</label>
+                            <input type="number" id="RestingBP" value="120" min="40" max="240" required>
                         </div>
                         <div>
-                            <label>Cholesterol (mg/dl)</label>
-                            <input type="number" id="Cholesterol" value="200" required>
+                            <label>Cholesterol (50-600 mg/dl)</label>
+                            <input type="number" id="Cholesterol" value="200" min="50" max="600" required>
                         </div>
                         <div>
-                            <label>Max Heart Rate</label>
-                            <input type="number" id="MaxHR" value="150" required>
+                            <label>Max Heart Rate (60-220)</label>
+                            <input type="number" id="MaxHR" value="150" min="60" max="220" required>
                         </div>
                         <div>
                             <label>Fasting Blood Sugar > 120</label>
@@ -352,8 +366,8 @@
                             </select>
                         </div>
                         <div>
-                            <label>Oldpeak (Depression)</label>
-                            <input type="number" step="0.1" id="Oldpeak" value="1.0" required>
+                            <label>Oldpeak (-2.5 to 6.2)</label>
+                            <input type="number" step="0.1" id="Oldpeak" value="1.0" min="-2.5" max="6.2" required>
                         </div>
                         <div class="full-width">
                             <label>Resting ECG</label>
@@ -397,6 +411,17 @@
                 <span>Recent Submissions History</span>
                 <button class="btn-refresh" onclick="loadHistory()">Refresh Records</button>
             </div>
+            
+            <!-- Search & Filter Controls -->
+            <div class="filter-controls">
+                <input type="text" id="searchInput" placeholder="Search by date, age, or vitals..." oninput="filterHistory()">
+                <select id="riskFilter" onchange="filterHistory()">
+                    <option value="ALL">All Risk Levels</option>
+                    <option value="Low">Low Risk</option>
+                    <option value="High">Elevated Risk</option>
+                </select>
+            </div>
+
             <div style="overflow-x: auto;">
                 <table class="history-table">
                     <thead>
@@ -421,6 +446,7 @@
 
     <script>
         let gaugeChartInstance = null;
+        let globalHistoryData = []; // Store raw history for client-side filtering
 
         function setActive(element) {
             const items = document.querySelectorAll('.sidebar .nav-item');
@@ -428,7 +454,6 @@
             element.classList.add('active');
         }
 
-        // Initialize Gauge Arc Chart
         function initGauge(score = 0, isHigh = false) {
             const ctx = document.getElementById('gaugeChart').getContext('2d');
             if (gaugeChartInstance) gaugeChartInstance.destroy();
@@ -451,7 +476,30 @@
             });
         }
 
+        // Client-side Validation Handler
+        function validateInputs() {
+            const validations = [
+                { id: 'Age', min: 1, max: 120, label: 'Age (1-120)' },
+                { id: 'RestingBP', min: 40, max: 240, label: 'Resting BP (40-240 mmHg)' },
+                { id: 'Cholesterol', min: 50, max: 600, label: 'Cholesterol (50-600 mg/dl)' },
+                { id: 'MaxHR', min: 60, max: 220, label: 'Max Heart Rate (60-220)' },
+                { id: 'Oldpeak', min: -2.5, max: 6.2, label: 'Oldpeak (-2.5 to 6.2)' }
+            ];
+
+            for (const v of validations) {
+                const val = parseFloat(document.getElementById(v.id).value);
+                if (isNaN(val) || val < v.min || val > v.max) {
+                    alert(`Invalid input for ${v.label}. Please enter a value between ${v.min} and ${v.max}.`);
+                    document.getElementById(v.id).focus();
+                    return false;
+                }
+            }
+            return true;
+        }
+
         async function predictRisk() {
+            if (!validateInputs()) return; // Stop payload submission if validation fails
+
             const age = parseInt(document.getElementById('Age').value);
             const bp = parseInt(document.getElementById('RestingBP').value);
             const cholesterol = parseInt(document.getElementById('Cholesterol').value);
@@ -514,31 +562,54 @@
                 const response = await fetch('https://health-risk-api-chnx.onrender.com/history');
                 const data = await response.json();
                 
-                tableBody.innerHTML = '';
-                if (!data.history || data.history.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 15px;">No submission records found.</td></tr>`;
-                    return;
-                }
-
-                data.history.forEach(item => {
-                    const isHigh = item.risk_level === 'High';
-                    const badgeStyle = isHigh ? 'color: var(--accent-red);' : 'color: var(--accent-cyan);';
-                    
-                    const row = `
-                        <tr>
-                            <td>${item.timestamp || 'N/A'}</td>
-                            <td>${item.age ?? '--'}</td>
-                            <td>${item.blood_pressure ?? '--'} mmHg</td>
-                            <td>${item.bmi ?? '--'} mg/dl</td>
-                            <td>${item.risk_score}%</td>
-                            <td style="${badgeStyle} font-weight: 600;">${item.risk_level}</td>
-                        </tr>
-                    `;
-                    tableBody.innerHTML += row;
-                });
+                globalHistoryData = data.history || [];
+                filterHistory(); // Render table with default/current filters
             } catch (error) {
                 tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--accent-red); padding: 15px;">Failed to load history data.</td></tr>`;
             }
+        }
+
+        // Search & Multi-Patient Filtering Logic
+        function filterHistory() {
+            const tableBody = document.getElementById('historyTableBody');
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const selectedRisk = document.getElementById('riskFilter').value;
+
+            const filtered = globalHistoryData.filter(item => {
+                const matchesSearch = (
+                    (item.timestamp && item.timestamp.toLowerCase().includes(searchTerm)) ||
+                    (item.age && item.age.toString().includes(searchTerm)) ||
+                    (item.blood_pressure && item.blood_pressure.toString().includes(searchTerm)) ||
+                    (item.bmi && item.bmi.toString().includes(searchTerm))
+                );
+
+                const matchesRisk = selectedRisk === 'ALL' || item.risk_level === selectedRisk;
+
+                return matchesSearch && matchesRisk;
+            });
+
+            tableBody.innerHTML = '';
+            if (filtered.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 15px;">No matching records found.</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(item => {
+                const isHigh = item.risk_level === 'High';
+                const badgeStyle = isHigh ? 'color: var(--accent-red);' : 'color: var(--accent-cyan);';
+                
+                const row = `
+                    <tr>
+                        <td>${item.timestamp || 'N/A'}</td>
+                        <td>${item.age ?? '--'}</td>
+                        <td>${item.blood_pressure ?? '--'} mmHg</td>
+                        <td>${item.bmi ?? '--'} mg/dl</td>
+                        <td>${item.risk_score}%</td>
+                        <td style="${badgeStyle} font-weight: 600;">${item.risk_level}</td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
         }
 
         function resetForm() {
