@@ -4,7 +4,6 @@ from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from openai import OpenAI
 
 app = FastAPI()
 
@@ -18,13 +17,11 @@ app.add_middleware(
 )
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Initialize OpenAI Client safely
-openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 
 def get_db_connection():
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL environment variable is not set")
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 
@@ -65,6 +62,7 @@ class HeartData(BaseModel):
     Age: int = Field(..., example=45)
     RestingBP: int = Field(..., example=120)
     Cholesterol: int = Field(..., example=200)
+    BMI: float = Field(default=25.0, example=25.0)
     Sex: str = Field(default="Male")
     MaxHR: int = Field(default=150)
     FastingBS: int = Field(default=0)
@@ -73,13 +71,6 @@ class HeartData(BaseModel):
     ST_Slope: str = Field(default="Up")
     Oldpeak: float = Field(default=1.0)
     RestingECG: str = Field(default="Normal")
-
-
-# OpenAI Structured Output Schema
-class ClinicalInsight(BaseModel):
-    summary_notes: str = Field(description="A 2-sentence clinical summary of the patient's condition based on vitals.")
-    primary_recommendations: list[str] = Field(description="List of 2-3 specific actionable lifestyle or clinical changes.")
-    follow_up_urgency: str = Field(description="Level of follow-up required: 'Routine', 'Urgent', or 'Immediate'")
 
 
 @app.post("/predict")
@@ -93,33 +84,11 @@ def predict(payload: HeartData):
     if payload.ExerciseAngina.lower() == "yes":
         base_score += 15
         
-    # Scale score into a realistic percentage bounds (10.0% to 95.0%)
+    # Scale score into realistic percentage bounds (10.0% to 95.0%)
     probability = round(min(max(base_score / 2.8, 10.0), 95.0), 1)
     risk_level = "High" if probability >= 50 else "Low"
 
-    # 2. Generate Structured Response via OpenAI (Optional enrichment step)
-    ai_analysis = None
-    if openai_client:
-        try:
-            completion = openai_client.beta.chat.completions.parse(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": "You are a clinical decision support assistant analyzing patient vitals and cardiac risk scores."
-                    },
-                    {
-                        "role": "user", 
-                        "content": f"Patient Age: {payload.Age}, Resting BP: {payload.RestingBP}, Cholesterol: {payload.Cholesterol}, Risk Score: {probability}% ({risk_level} Risk). Generate structured clinical notes."
-                    }
-                ],
-                response_format=ClinicalInsight,
-            )
-            ai_analysis = completion.choices[0].message.parsed.model_dump()
-        except Exception as e:
-            print(f"OpenAI Generation Error: {e}")
-
-    # 3. Save incoming assessment to PostgreSQL database
+    # 2. Save incoming assessment to PostgreSQL database
     if DATABASE_URL:
         try:
             conn = get_db_connection()
@@ -129,7 +98,7 @@ def predict(payload: HeartData):
                 INSERT INTO predictions (age, blood_pressure, bmi, risk_score, risk_level)
                 VALUES (%s, %s, %s, %s, %s);
                 """,
-                (payload.Age, payload.RestingBP, payload.Cholesterol, probability, risk_level)
+                (payload.Age, payload.RestingBP, payload.BMI, probability, risk_level)
             )
             conn.commit()
             cur.close()
@@ -137,12 +106,11 @@ def predict(payload: HeartData):
         except Exception as e:
             print(f"Database insertion failed: {e}")
 
-    # 4. Return combined key-values to UI
+    # 3. Return key-values matched with client UI
     return {
         "heart_disease_risk": 1 if probability >= 50 else 0,
         "risk_probability_percent": probability,
-        "risk_level": risk_level,
-        "ai_analysis": ai_analysis
+        "risk_level": risk_level
     }
 
 
