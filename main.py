@@ -4,6 +4,7 @@ from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from openai import OpenAI
 
 app = FastAPI()
 
@@ -17,9 +18,15 @@ app.add_middleware(
 )
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Initialize OpenAI Client safely
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
 
 def init_db():
     if not DATABASE_URL:
@@ -42,15 +49,18 @@ def init_db():
     cur.close()
     conn.close()
 
+
 @app.on_event("startup")
 def startup_event():
     init_db()
+
 
 @app.get("/")
 def root():
     return {"status": "online", "message": "Health Risk Assessor API is active."}
 
-# Pydantic schema for incoming patient payload
+
+# Incoming Patient Request Schema
 class HeartData(BaseModel):
     Age: int = Field(..., example=45)
     RestingBP: int = Field(..., example=120)
@@ -64,13 +74,43 @@ class HeartData(BaseModel):
     Oldpeak: float = Field(default=1.0)
     RestingECG: str = Field(default="Normal")
 
+
+# OpenAI Structured Output Schema (Forces LLM to respond strictly in this format)
+class ClinicalInsight(BaseModel):
+    summary_notes: str = Field(description="A 2-sentence clinical summary of the patient's condition based on vitals.")
+    primary_recommendations: list[str] = Field(description="List of 2-3 specific actionable lifestyle or clinical changes.")
+    follow_up_urgency: str = Field(description="Level of follow-up required: 'Routine', 'Urgent', or 'Immediate'")
+
+
 @app.post("/predict")
 def predict(payload: HeartData):
-    # Perform prediction logic / calculation
-    probability = 51.8  # Replace/bind with your model evaluation output
+    # 1. Prediction calculation logic (Scikit-learn model placeholder)
+    probability = 51.8  
     risk_level = "High" if probability >= 50 else "Low"
 
-    # Save incoming assessment to PostgreSQL database
+    # 2. Generate Structured Response via OpenAI (Optional enrichment step)
+    ai_analysis = None
+    if openai_client:
+        try:
+            completion = openai_client.beta.chat.completions.parse(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "You are a clinical decision support assistant analyzing patient vitals and cardiac risk scores."
+                    },
+                    {
+                        "role": "user", 
+                        "content": f"Patient Age: {payload.Age}, Resting BP: {payload.RestingBP}, Cholesterol: {payload.Cholesterol}, Risk Score: {probability}% ({risk_level} Risk). Generate structured clinical notes."
+                    }
+                ],
+                response_format=ClinicalInsight,
+            )
+            ai_analysis = completion.choices[0].message.parsed.model_dump()
+        except Exception as e:
+            print(f"OpenAI Generation Error: {e}")
+
+    # 3. Save incoming assessment to PostgreSQL database
     if DATABASE_URL:
         try:
             conn = get_db_connection()
@@ -88,12 +128,14 @@ def predict(payload: HeartData):
         except Exception as e:
             print(f"Database insertion failed: {e}")
 
-    # Return key-values matched with client JS interface
+    # 4. Return combined key-values to UI
     return {
         "heart_disease_risk": 1 if probability >= 50 else 0,
         "risk_probability_percent": probability,
-        "risk_level": risk_level
+        "risk_level": risk_level,
+        "ai_analysis": ai_analysis
     }
+
 
 @app.get("/history")
 def get_history():
