@@ -102,7 +102,7 @@ def predict(payload: HeartData):
     if ai_client:
         try:
             completion = ai_client.beta.chat.completions.parse(
-                model="gemini-1.5-flash",
+                model="gemini-3.5-flash",
                 messages=[
                     {
                         "role": "system", 
