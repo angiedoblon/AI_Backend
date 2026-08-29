@@ -75,7 +75,7 @@ class HeartData(BaseModel):
     RestingECG: str = Field(default="Normal")
 
 
-# OpenAI Structured Output Schema (Forces LLM to respond strictly in this format)
+# OpenAI Structured Output Schema
 class ClinicalInsight(BaseModel):
     summary_notes: str = Field(description="A 2-sentence clinical summary of the patient's condition based on vitals.")
     primary_recommendations: list[str] = Field(description="List of 2-3 specific actionable lifestyle or clinical changes.")
@@ -84,8 +84,17 @@ class ClinicalInsight(BaseModel):
 
 @app.post("/predict")
 def predict(payload: HeartData):
-    # 1. Prediction calculation logic (Scikit-learn model placeholder)
-    probability = 51.8  
+    # 1. Dynamic Risk Score Calculation based on payload vitals
+    base_score = (payload.Age * 0.35) + (payload.RestingBP * 0.25) + (payload.Cholesterol * 0.15) + (payload.Oldpeak * 5.0)
+    
+    # Adjust score based on categorical risk factors
+    if payload.FastingBS == 1:
+        base_score += 10
+    if payload.ExerciseAngina.lower() == "yes":
+        base_score += 15
+        
+    # Scale score into a realistic percentage bounds (10.0% to 95.0%)
+    probability = round(min(max(base_score / 2.8, 10.0), 95.0), 1)
     risk_level = "High" if probability >= 50 else "Low"
 
     # 2. Generate Structured Response via OpenAI (Optional enrichment step)
