@@ -85,7 +85,7 @@ class ClinicalInsight(BaseModel):
     follow_up_urgency: str = Field(description="Level of follow-up required: 'Routine', 'Urgent', or 'Immediate'")
 
 
-@app.post("/predict")
+@@app.post("/predict")
 def predict(payload: HeartData):
     # 1. Calculate dynamic risk score
     base_score = (payload.Age * 0.35) + (payload.RestingBP * 0.25) + (payload.Cholesterol * 0.15) + (payload.Oldpeak * 5.0)
@@ -97,12 +97,12 @@ def predict(payload: HeartData):
     probability = round(min(max(base_score / 2.8, 10.0), 95.0), 1)
     risk_level = "High" if probability >= 50 else "Low"
 
-    # 2. Call Gemini API for Structured Output (Free!)
+    # 2. Call Gemini API for Structured Output
     ai_analysis = None
     if ai_client:
         try:
             completion = ai_client.beta.chat.completions.parse(
-                model="gemini-3.5-flash",
+                model="gemini-2.5-flash",  # Fixed model identifier
                 messages=[
                     {
                         "role": "system", 
@@ -118,6 +118,18 @@ def predict(payload: HeartData):
             ai_analysis = completion.choices[0].message.parsed.model_dump()
         except Exception as e:
             print(f"Gemini AI Generation Error: {e}")
+
+    # Fallback if Gemini fails or GEMINI_API_KEY environment variable is not set
+    if not ai_analysis:
+        ai_analysis = {
+            "summary_notes": f"Patient presents a {risk_level.lower()} cardiovascular risk profile ({probability}% probability). Key metrics include Resting BP of {payload.RestingBP} mmHg and Cholesterol of {payload.Cholesterol} mg/dl.",
+            "primary_recommendations": [
+                "Maintain routine cardiovascular monitoring and periodic blood pressure checks.",
+                "Adopt a heart-healthy diet low in saturated fats and sodium.",
+                "Engage in at least 150 minutes of moderate aerobic exercise weekly."
+            ],
+            "follow_up_urgency": "Urgent" if probability >= 50 else "Routine"
+        }
 
     # 3. Save to database
     if DATABASE_URL:
