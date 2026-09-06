@@ -542,11 +542,27 @@
                 if (isHigh) {
                     badge.innerText = "Elevated Risk";
                     badge.className = "status-badge badge-high";
-                    document.getElementById('clinical-summary').innerText = "Elevated cardiovascular risk profile detected. Clinical diagnostics recommended.";
                 } else {
                     badge.innerText = "Low Risk";
                     badge.className = "status-badge badge-low";
-                    document.getElementById('clinical-summary').innerText = "Vitals fall within normal reference ranges. Maintain regular monitoring.";
+                }
+
+                // Dynamic AI Clinical Notes Injection
+                const summaryElement = document.getElementById('clinical-summary');
+                if (data.ai_analysis && data.ai_analysis.summary_notes) {
+                    let aiHTML = `<p>${data.ai_analysis.summary_notes}</p>`;
+                    if (data.ai_analysis.primary_recommendations && data.ai_analysis.primary_recommendations.length > 0) {
+                        aiHTML += `<ul style="margin-top: 8px; padding-left: 20px; font-size: 0.85rem; color: #94a3b8;">`;
+                        data.ai_analysis.primary_recommendations.forEach(rec => {
+                            aiHTML += `<li>${rec}</li>`;
+                        });
+                        aiHTML += `</ul>`;
+                    }
+                    summaryElement.innerHTML = aiHTML;
+                } else {
+                    summaryElement.innerText = isHigh 
+                        ? "Elevated cardiovascular risk profile detected. Clinical diagnostics recommended." 
+                        : "Vitals fall within normal reference ranges. Maintain regular monitoring.";
                 }
 
                 initGauge(probability, isHigh);
@@ -614,6 +630,7 @@
 
         function resetForm() {
             document.getElementById('result-prob').innerText = '--%';
+            document.getElementById('clinical-summary').innerText = "Vitals fall within normal reference ranges. Maintain regular monitoring.";
             initGauge(0, false);
         }
 
