@@ -309,7 +309,7 @@
             <!-- Assessment Input Form Panel -->
             <div class="panel">
                 <div class="panel-title">Clinical Vitals Input Form</div>
-                <form id="healthForm">
+                <form id="healthForm" onsubmit="event.preventDefault(); predictRisk(event);">
                     <div class="form-grid">
                         <div>
                             <label>Age (1-120)</label>
@@ -378,7 +378,7 @@
                             </select>
                         </div>
                         <div class="full-width btn-group">
-                            <button type="button" class="btn-predict" onclick="predictRisk()">Evaluate Assessment</button>
+                            <button type="button" class="btn-predict" onclick="predictRisk(event)">Evaluate Assessment</button>
                             <button type="reset" class="btn-reset" onclick="resetForm()">Reset</button>
                         </div>
                     </div>
@@ -497,8 +497,12 @@
             return true;
         }
 
-        async function predictRisk() {
-            if (!validateInputs()) return; // Stop payload submission if validation fails
+        async function predictRisk(e) {
+    if (e) e.preventDefault(); // Stop native browser form submit refresh
+    
+    if (!validateInputs()) return; // Stop payload submission if validation fails
+    
+    // ... rest of your predictRisk function code stays the same
 
             const age = parseInt(document.getElementById('Age').value);
             const bp = parseInt(document.getElementById('RestingBP').value);
