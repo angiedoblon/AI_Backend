@@ -487,88 +487,78 @@
             return true;
         }
 
-        async function predictRisk(e) {
-            if (e) e.preventDefault();
-            if (!validateInputs()) return;
+       async function predictRisk(e) {
+    if (e) e.preventDefault();
+    if (!validateInputs()) return;
 
-            const summaryElement = document.getElementById('clinical-summary');
-            summaryElement.innerText = "Analyzing vitals and requesting AI clinical insights...";
+    const summaryElement = document.getElementById('clinical-summary');
+    summaryElement.innerText = "Analyzing vitals and requesting AI clinical insights...";
 
-            const age = parseInt(document.getElementById('Age').value);
-            const bp = parseInt(document.getElementById('RestingBP').value);
-            const cholesterol = parseInt(document.getElementById('Cholesterol').value);
-            const maxHR = parseInt(document.getElementById('MaxHR').value);
-            const oldpeak = parseFloat(document.getElementById('Oldpeak').value);
+    const payload = {
+        Age: parseInt(document.getElementById('Age').value),
+        Sex: document.getElementById('Sex').value,
+        ChestPainType: document.getElementById('ChestPainType').value,
+        RestingBP: parseInt(document.getElementById('RestingBP').value),
+        Cholesterol: parseInt(document.getElementById('Cholesterol').value),
+        FastingBS: parseInt(document.getElementById('FastingBS').value),
+        RestingECG: document.getElementById('RestingECG').value,
+        MaxHR: parseInt(document.getElementById('MaxHR').value),
+        ExerciseAngina: document.getElementById('ExerciseAngina').value,
+        Oldpeak: parseFloat(document.getElementById('Oldpeak').value),
+        ST_Slope: document.getElementById('ST_Slope').value
+    };
 
-            const payload = {
-                Age: age,
-                Sex: document.getElementById('Sex').value,
-                ChestPainType: document.getElementById('ChestPainType').value,
-                RestingBP: bp,
-                Cholesterol: cholesterol,
-                FastingBS: parseInt(document.getElementById('FastingBS').value),
-                RestingECG: document.getElementById('RestingECG').value,
-                MaxHR: maxHR,
-                ExerciseAngina: document.getElementById('ExerciseAngina').value,
-                Oldpeak: oldpeak,
-                ST_Slope: document.getElementById('ST_Slope').value
-            };
+    try {
+        const response = await fetch('https://health-risk-api-chnx.onrender.com/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
 
-            try {
-                const response = await fetch('https://health-risk-api-chnx.onrender.com/predict', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (response.status === 422) {
-                    alert("Backend Validation Error: Received values outside permitted range.");
-                    return;
-                }
-
-                const data = await response.json();
-                const probability = data.risk_probability_percent ?? data.risk_score ?? 0;
-                const isHigh = data.heart_disease_risk === 1 || data.risk_level === 'High';
-
-                document.getElementById('result-prob').innerText = probability + '%';
-                
-                const badge = document.getElementById('result-badge');
-                if (isHigh) {
-                    badge.innerText = "Elevated Risk";
-                    badge.className = "status-badge badge-high";
-                } else {
-                    badge.innerText = "Low Risk";
-                    badge.className = "status-badge badge-low";
-                }
-
-                // AI Notes Parsing with Fallbacks
-                const ai = data.ai_analysis || data;
-                const notes = ai.summary_notes || ai.clinical_notes || ai.notes;
-                const recs = ai.primary_recommendations || ai.recommendations;
-
-                if (notes) {
-                    let aiHTML = `<p>${notes}</p>`;
-                    if (recs && recs.length > 0) {
-                        aiHTML += `<ul style="margin-top: 8px; padding-left: 20px; font-size: 0.85rem; color: #94a3b8;">`;
-                        recs.forEach(rec => {
-                            aiHTML += `<li>${rec}</li>`;
-                        });
-                        aiHTML += `</ul>`;
-                    }
-                    summaryElement.innerHTML = aiHTML;
-                } else {
-                    summaryElement.innerText = isHigh 
-                        ? "Elevated cardiovascular risk profile detected. Clinical diagnostics recommended." 
-                        : "Vitals fall within normal reference ranges. Maintain regular monitoring.";
-                }
-
-                initGauge(probability, isHigh);
-                loadHistory();
-            } catch (err) {
-                summaryElement.innerText = "Error connecting to AI service.";
-                alert("Could not connect to backend server.");
-            }
+        if (!response.ok) {
+            throw new Error(`Server returned status code ${response.status}`);
         }
+
+        const data = await response.json();
+        console.log("API Full Payload Output:", data); // Check F12 Console to see full response structure
+
+        const probability = data.risk_probability_percent ?? data.risk_score ?? data.probability ?? 0;
+        const isHigh = data.heart_disease_risk === 1 || data.risk_level === 'High';
+
+        document.getElementById('result-prob').innerText = probability + '%';
+        
+        const badge = document.getElementById('result-badge');
+        if (isHigh) {
+            badge.innerText = "Elevated Risk";
+            badge.className = "status-badge badge-high";
+        } else {
+            badge.innerText = "Low Risk";
+            badge.className = "status-badge badge-low";
+        }
+
+        // Dynamically locate notes across different standard key names
+        let notesText = null;
+        if (typeof data.ai_analysis === 'string') {
+            notesText = data.ai_analysis;
+        } else if (data.ai_analysis) {
+            notesText = data.ai_analysis.summary_notes || data.ai_analysis.notes || data.ai_analysis.clinical_notes;
+        } else {
+            notesText = data.summary_notes || data.clinical_notes || data.notes || data.analysis || data.message;
+        }
+
+        if (notesText) {
+            summaryElement.innerHTML = `<p>${notesText}</p>`;
+        } else {
+            summaryElement.innerText = "Assessment complete. No detailed AI summary generated by engine.";
+        }
+
+        initGauge(probability, isHigh);
+        loadHistory();
+    } catch (err) {
+        console.error("Prediction Error:", err);
+        summaryElement.innerText = "Error loading clinical notes. Check console logs for details.";
+    }
+}
 
         async function loadHistory() {
             const tableBody = document.getElementById('historyTableBody');
