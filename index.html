@@ -224,7 +224,6 @@
         .filter-controls select {
             flex: 1;
         }
-
         /* History Table Styling */
         .history-table {
             width: 100%;
@@ -266,7 +265,6 @@
         <a href="#model-parameters" class="nav-item" onclick="setActive(this)">⚙️ Model Parameters</a>
         <a href="https://health-risk-api-chnx.onrender.com/export-csv" class="nav-item" target="_blank">📥 Export CSV</a>
     </div>
-
     <!-- Main Content Area -->
     <div class="main-content">
         
@@ -278,7 +276,6 @@
                 <span>Computer Engineering Lab</span>
             </div>
         </div>
-
         <!-- Metric Summary Cards / Model Parameters Section -->
         <div class="metrics-grid" id="model-parameters">
             <div class="metric-card">
@@ -302,7 +299,6 @@
                 <div class="metric-sub">FastAPI Live Connection</div>
             </div>
         </div>
-
         <!-- Middle Section: Form Input & Prediction Score Gauge -->
         <div class="dashboard-grid" id="assessment-engine">
             
@@ -384,7 +380,6 @@
                     </div>
                 </form>
             </div>
-
             <!-- Dynamic Risk Meter & Breakdown Panel -->
             <div class="panel" style="display: flex; flex-direction: column; justify-content: space-between;">
                 <div>
@@ -404,7 +399,6 @@
                 </div>
             </div>
         </div>
-
         <!-- History Dashboard Panel / Patient Records Section -->
         <div class="panel" id="patient-records">
             <div class="panel-title">
@@ -421,7 +415,6 @@
                     <option value="High">Elevated Risk</option>
                 </select>
             </div>
-
             <div style="overflow-x: auto;">
                 <table class="history-table">
                     <thead>
@@ -443,10 +436,9 @@
             </div>
         </div>
     </div>
-
     <script>
         let gaugeChartInstance = null;
-        let globalHistoryData = []; // Store raw history for client-side filtering
+        let globalHistoryData = [];
 
         function setActive(element) {
             const items = document.querySelectorAll('.sidebar .nav-item');
@@ -476,7 +468,6 @@
             });
         }
 
-        // Client-side Validation Handler
         function validateInputs() {
             const validations = [
                 { id: 'Age', min: 1, max: 120, label: 'Age (1-120)' },
@@ -485,7 +476,6 @@
                 { id: 'MaxHR', min: 60, max: 220, label: 'Max Heart Rate (60-220)' },
                 { id: 'Oldpeak', min: -2.5, max: 6.2, label: 'Oldpeak (-2.5 to 6.2)' }
             ];
-
             for (const v of validations) {
                 const val = parseFloat(document.getElementById(v.id).value);
                 if (isNaN(val) || val < v.min || val > v.max) {
@@ -498,11 +488,11 @@
         }
 
         async function predictRisk(e) {
-    if (e) e.preventDefault(); // Stop native browser form submit refresh
-    
-    if (!validateInputs()) return; // Stop payload submission if validation fails
-    
-    // ... rest of your predictRisk function code stays the same
+            if (e) e.preventDefault();
+            if (!validateInputs()) return;
+
+            const summaryElement = document.getElementById('clinical-summary');
+            summaryElement.innerText = "Analyzing vitals and requesting AI clinical insights...";
 
             const age = parseInt(document.getElementById('Age').value);
             const bp = parseInt(document.getElementById('RestingBP').value);
@@ -537,7 +527,7 @@
                 }
 
                 const data = await response.json();
-                const probability = data.risk_probability_percent ?? data.risk_score;
+                const probability = data.risk_probability_percent ?? data.risk_score ?? 0;
                 const isHigh = data.heart_disease_risk === 1 || data.risk_level === 'High';
 
                 document.getElementById('result-prob').innerText = probability + '%';
@@ -551,13 +541,16 @@
                     badge.className = "status-badge badge-low";
                 }
 
-                // Dynamic AI Clinical Notes Injection
-                const summaryElement = document.getElementById('clinical-summary');
-                if (data.ai_analysis && data.ai_analysis.summary_notes) {
-                    let aiHTML = `<p>${data.ai_analysis.summary_notes}</p>`;
-                    if (data.ai_analysis.primary_recommendations && data.ai_analysis.primary_recommendations.length > 0) {
+                // AI Notes Parsing with Fallbacks
+                const ai = data.ai_analysis || data;
+                const notes = ai.summary_notes || ai.clinical_notes || ai.notes;
+                const recs = ai.primary_recommendations || ai.recommendations;
+
+                if (notes) {
+                    let aiHTML = `<p>${notes}</p>`;
+                    if (recs && recs.length > 0) {
                         aiHTML += `<ul style="margin-top: 8px; padding-left: 20px; font-size: 0.85rem; color: #94a3b8;">`;
-                        data.ai_analysis.primary_recommendations.forEach(rec => {
+                        recs.forEach(rec => {
                             aiHTML += `<li>${rec}</li>`;
                         });
                         aiHTML += `</ul>`;
@@ -572,6 +565,7 @@
                 initGauge(probability, isHigh);
                 loadHistory();
             } catch (err) {
+                summaryElement.innerText = "Error connecting to AI service.";
                 alert("Could not connect to backend server.");
             }
         }
@@ -583,13 +577,12 @@
                 const data = await response.json();
                 
                 globalHistoryData = data.history || [];
-                filterHistory(); // Render table with default/current filters
+                filterHistory();
             } catch (error) {
                 tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--accent-red); padding: 15px;">Failed to load history data.</td></tr>`;
             }
         }
 
-        // Search & Multi-Patient Filtering Logic
         function filterHistory() {
             const tableBody = document.getElementById('historyTableBody');
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
@@ -604,7 +597,6 @@
                 );
 
                 const matchesRisk = selectedRisk === 'ALL' || item.risk_level === selectedRisk;
-
                 return matchesSearch && matchesRisk;
             });
 
