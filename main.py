@@ -85,7 +85,7 @@ class ClinicalInsight(BaseModel):
     follow_up_urgency: str = Field(description="Level of follow-up required: 'Routine', 'Urgent', or 'Immediate'")
 
 
-@@app.post("/predict")
+@app.post("/predict")
 def predict(payload: HeartData):
     # 1. Calculate dynamic risk score
     base_score = (payload.Age * 0.35) + (payload.RestingBP * 0.25) + (payload.Cholesterol * 0.15) + (payload.Oldpeak * 5.0)
@@ -102,7 +102,7 @@ def predict(payload: HeartData):
     if ai_client:
         try:
             completion = ai_client.beta.chat.completions.parse(
-                model="gemini-2.5-flash",  # Fixed model identifier
+                model="gemini-1.5-flash",  # Fixed model identifier
                 messages=[
                     {
                         "role": "system", 
