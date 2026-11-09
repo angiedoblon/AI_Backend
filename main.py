@@ -1,8 +1,11 @@
 import os
+import csv
+import io
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from openai import OpenAI
 
@@ -97,8 +100,8 @@ def predict(payload: HeartData):
         
     probability = round(min(max(base_score / 2.8, 10.0), 95.0), 1)
     risk_level = "High" if probability >= 50 else "Low"
-
     ai_analysis = None
+    
     if ai_client:
         try:
             user_content = (
@@ -108,7 +111,7 @@ def predict(payload: HeartData):
             )
             if payload.DoctorsFindings:
                 user_content += f" Physician's Actual Findings/Diagnosis: '{payload.DoctorsFindings}'. Compare these findings against the automated model score."
-
+            
             completion = ai_client.beta.chat.completions.parse(
                 model="gemini-2.5-flash",
                 messages=[
@@ -146,12 +149,10 @@ def predict(payload: HeartData):
             "comparison_notes": comparison_fallback
         }
 
-    # Save to database including patient_name
     if DATABASE_URL:
         try:
             conn = get_db_connection()
             cur = conn.cursor()
-            # If table already exists without patient_name column, handle gracefully or run alter table
             cur.execute("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS patient_name VARCHAR(100);")
             cur.execute(
                 """
@@ -198,7 +199,9 @@ def get_history():
         return {"history": records}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-        @app.get("/export-csv")
+
+
+@app.get("/export-csv")
 def export_csv():
     try:
         conn = get_db_connection()
@@ -218,15 +221,12 @@ def export_csv():
         records = cur.fetchall()
         cur.close()
         conn.close()
-
-        # Create in-memory CSV string
+        
         output = io.StringIO()
         writer = csv.writer(output)
         
-        # Write header
         writer.writerow(["Timestamp", "Patient Name", "Age", "Blood Pressure", "Cholesterol (mg/dl)", "Risk Score (%)", "Risk Level"])
         
-        # Write data rows
         for row in records:
             writer.writerow([
                 row["timestamp"],
