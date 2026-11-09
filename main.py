@@ -81,6 +81,7 @@ class HeartData(BaseModel):
     Oldpeak: float = Field(default=1.0)
     RestingECG: str = Field(default="Normal")
     DoctorsFindings: str = Field(default="", description="Physician's actual diagnosis notes for comparison")
+    Symptoms: str = Field(default="", description="Observed nurse triage symptoms or notes")
 
 
 class ClinicalInsight(BaseModel):
@@ -107,6 +108,7 @@ def predict(payload: HeartData):
             user_content = (
                 f"Patient Name: {payload.PatientName}, Age: {payload.Age}, Sex: {payload.Sex}, Resting BP: {payload.RestingBP}, "
                 f"Cholesterol: {payload.Cholesterol}, Max HR: {payload.MaxHR}, Fasting BS: {payload.FastingBS}, "
+                f"Observed Symptoms/Notes: '{payload.Symptoms or 'None reported'}', "
                 f"Calculated Risk Score: {probability}% ({risk_level} Risk)."
             )
             if payload.DoctorsFindings:

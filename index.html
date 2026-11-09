@@ -238,6 +238,13 @@
             cursor: pointer;
             width: auto;
         }
+        /* Print Styles */
+        @media print {
+            body { background: #fff !important; color: #000 !important; display: block; }
+            .sidebar, .top-header, .metrics-grid, .filter-controls, .btn-group, .btn-refresh { display: none !important; }
+            .panel { border: none !important; background: #fff !important; color: #000 !important; padding: 0 !important; }
+            #clinical-summary { color: #000 !important; background: #fff !important; }
+        }
     </style>
 </head>
 <body>
@@ -355,6 +362,24 @@
                                 <option value="LVH">Left Ventricular Hypertrophy</option>
                             </select>
                         </div>
+                        <!-- Nurse Observation Checkboxes -->
+                        <div class="full-width" style="background: var(--card-inner); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                            <label style="margin-bottom: 6px; color: var(--accent-cyan);">Nurse Triage Quick Observations (Symptoms)</label>
+                            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                                <label style="font-weight: normal; font-size: 11px; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 4px; text-transform: none;">
+                                    <input type="checkbox" name="symptom" value="Shortness of Breath" style="width: auto;"> Shortness of Breath
+                                </label>
+                                <label style="font-weight: normal; font-size: 11px; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 4px; text-transform: none;">
+                                    <input type="checkbox" name="symptom" value="Dizziness" style="width: auto;"> Dizziness
+                                </label>
+                                <label style="font-weight: normal; font-size: 11px; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 4px; text-transform: none;">
+                                    <input type="checkbox" name="symptom" value="Smoker" style="width: auto;"> Smoker
+                                </label>
+                                <label style="font-weight: normal; font-size: 11px; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 4px; text-transform: none;">
+                                    <input type="checkbox" name="symptom" value="Family History" style="width: auto;"> Family History
+                                </label>
+                            </div>
+                        </div>
                         <div class="full-width">
                             <label>Physician's Findings / Diagnosis Notes (Optional for Comparison)</label>
                             <textarea id="DoctorsFindings" rows="2" placeholder="Paste doctor's diagnosis or notes here to compare against model prediction..." style="resize: vertical;"></textarea>
@@ -377,9 +402,12 @@
                         <div class="gauge-score" id="result-prob">--%</div>
                     </div>
                 </div>
-                <div style="background-color: var(--card-inner); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 12px; color: var(--text-muted);">
-                    <div style="font-weight: 600; color: #fff; margin-bottom: 6px;">Primary Assessment Notes:</div>
-                    <div id="clinical-summary">Submit patient vitals on the left to compute live cardiovascular risk probability scores.</div>
+                <div>
+                    <div style="background-color: var(--card-inner); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+                        <div style="font-weight: 600; color: #fff; margin-bottom: 6px;">Primary Assessment Notes:</div>
+                        <div id="clinical-summary">Submit patient vitals on the left to compute live cardiovascular risk probability scores.</div>
+                    </div>
+                    <button type="button" onclick="window.print()" style="width: 100%; background: var(--card-inner); color: var(--accent-green); border: 1px solid var(--border-color); padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">🖨️ Print Triage Summary Report</button>
                 </div>
             </div>
         </div>
@@ -471,6 +499,10 @@
             const summaryElement = document.getElementById('clinical-summary');
             summaryElement.innerText = "Analyzing vitals and generating nurse triage clinical notes...";
             
+            const checkedSymptoms = Array.from(document.querySelectorAll('input[name="symptom"]:checked'))
+                .map(cb => cb.value)
+                .join(', ');
+
             const payload = {
                 PatientName: document.getElementById('PatientName').value || "Anonymous Patient",
                 Age: parseInt(document.getElementById('Age').value),
@@ -484,7 +516,8 @@
                 ExerciseAngina: document.getElementById('ExerciseAngina').value,
                 Oldpeak: parseFloat(document.getElementById('Oldpeak').value),
                 ST_Slope: document.getElementById('ST_Slope').value,
-                DoctorsFindings: document.getElementById('DoctorsFindings').value
+                DoctorsFindings: document.getElementById('DoctorsFindings').value,
+                Symptoms: checkedSymptoms
             };
 
             try {
@@ -509,20 +542,17 @@
                     badge.innerText = "Low Risk";
                     badge.className = "status-badge badge-low";
                 }
-
                 const ai = data.ai_analysis;
                 if (ai && ai.summary_notes) {
                     let urgencyColor = '#3b82f6';
                     if (ai.follow_up_urgency === 'Urgent') urgencyColor = '#f59e0b';
                     if (ai.follow_up_urgency === 'Immediate') urgencyColor = '#f87171';
-
                     let aiHTML = `
                         <div style="margin-bottom: 8px;">
                             <strong style="color: #ffffff; font-size: 12px;">Initial Clinical Findings:</strong>
                             <p style="margin-top: 4px; color: #e2e8f0; line-height: 1.4;">${ai.summary_notes}</p>
                         </div>
                     `;
-
                     if (ai.primary_recommendations && ai.primary_recommendations.length > 0) {
                         aiHTML += `
                             <div style="margin-top: 8px;">
@@ -534,7 +564,6 @@
                         });
                         aiHTML += `</ul></div>`;
                     }
-
                     if (ai.comparison_notes) {
                         aiHTML += `
                             <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color);">
@@ -543,7 +572,6 @@
                             </div>
                         `;
                     }
-
                     aiHTML += `
                         <div style="margin-top: 8px; font-size: 11px; display: flex; align-items: center; gap: 6px;">
                             <span style="color: var(--text-muted);">Triage Urgency:</span> 
@@ -554,7 +582,6 @@
                 } else {
                     summaryElement.innerText = "Assessment complete. Vitals reviewed within normal parameters.";
                 }
-
                 initGauge(probability, isHigh);
                 loadHistory();
             } catch (err) {
@@ -613,6 +640,7 @@
         }
         function resetForm() {
             document.getElementById('PatientName').value = 'John Doe';
+            document.querySelectorAll('input[name="symptom"]').forEach(cb => cb.checked = false);
             document.getElementById('result-prob').innerText = '--%';
             document.getElementById('clinical-summary').innerText = "Vitals fall within normal reference ranges. Maintain regular monitoring.";
             initGauge(0, false);
