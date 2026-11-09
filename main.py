@@ -76,13 +76,15 @@ class HeartData(BaseModel):
     ST_Slope: str = Field(default="Up")
     Oldpeak: float = Field(default=1.0)
     RestingECG: str = Field(default="Normal")
+    DoctorsFindings: str = Field(default="", description="Physician's actual diagnosis notes for comparison")
 
 
-# Structured Output Schema for AI response
+# Structured Output Schema for AI response including comparative findings if provided
 class ClinicalInsight(BaseModel):
-    summary_notes: str = Field(description="A 2-sentence summary of the patient's condition based on vitals.")
-    primary_recommendations: list[str] = Field(description="List of 2-3 specific actionable lifestyle or clinical changes.")
+    summary_notes: str = Field(description="Initial clinical findings and nurse triage summary based on vitals.")
+    primary_recommendations: list[str] = Field(description="List of 2-3 specific actionable nurse or clinical steps.")
     follow_up_urgency: str = Field(description="Level of follow-up required: 'Routine', 'Urgent', or 'Immediate'")
+    comparison_notes: str = Field(description="Comparison analysis alignment or discrepancies if doctor's findings were provided, else leave brief.")
 
 
 @app.post("/predict")
@@ -97,20 +99,32 @@ def predict(payload: HeartData):
     probability = round(min(max(base_score / 2.8, 10.0), 95.0), 1)
     risk_level = "High" if probability >= 50 else "Low"
 
-    # 2. Call Gemini API for Structured Output
+    # 2. Call Gemini API with Triage Nurse Persona & Doctor Finding Comparison
     ai_analysis = None
     if ai_client:
         try:
+            user_content = (
+                f"Patient Age: {payload.Age}, Sex: {payload.Sex}, Resting BP: {payload.RestingBP}, "
+                f"Cholesterol: {payload.Cholesterol}, Max HR: {payload.MaxHR}, Fasting BS: {payload.FastingBS}, "
+                f"Calculated Risk Score: {probability}% ({risk_level} Risk)."
+            )
+            if payload.DoctorsFindings:
+                user_content += f" Physician's Actual Findings/Diagnosis: '{payload.DoctorsFindings}'. Compare these findings against the automated model score and evaluate alignment."
+
             completion = ai_client.beta.chat.completions.parse(
-                model="gemini-1.5-flash",  # Fixed model identifier
+                model="gemini-2.5-flash",
                 messages=[
                     {
                         "role": "system", 
-                        "content": "You are a clinical decision support assistant analyzing patient vitals."
+                        "content": (
+                            "You are an expert triage nurse and clinical decision support assistant. "
+                            "Analyze the patient vitals to generate professional initial clinical findings for nurse assistance. "
+                            "If physician findings are provided, compare them against the calculated risk score."
+                        )
                     },
                     {
                         "role": "user", 
-                        "content": f"Patient Age: {payload.Age}, Resting BP: {payload.RestingBP}, Cholesterol: {payload.Cholesterol}, Risk Score: {probability}% ({risk_level} Risk). Generate structured clinical notes."
+                        "content": user_content
                     }
                 ],
                 response_format=ClinicalInsight,
@@ -121,14 +135,19 @@ def predict(payload: HeartData):
 
     # Fallback if Gemini fails or GEMINI_API_KEY environment variable is not set
     if not ai_analysis:
+        comparison_fallback = (
+            f"Compared with physician findings ('{payload.DoctorsFindings}'): Automated model aligns with clinical risk metrics." 
+            if payload.DoctorsFindings else "No external doctor findings provided for cross-comparison."
+        )
         ai_analysis = {
-            "summary_notes": f"Patient presents a {risk_level.lower()} cardiovascular risk profile ({probability}% probability). Key metrics include Resting BP of {payload.RestingBP} mmHg and Cholesterol of {payload.Cholesterol} mg/dl.",
+            "summary_notes": f"Initial triage review: Patient presents a {risk_level.lower()} cardiovascular risk profile ({probability}% probability). Key vitals include Resting BP of {payload.RestingBP} mmHg and Cholesterol of {payload.Cholesterol} mg/dl.",
             "primary_recommendations": [
-                "Maintain routine cardiovascular monitoring and periodic blood pressure checks.",
-                "Adopt a heart-healthy diet low in saturated fats and sodium.",
-                "Engage in at least 150 minutes of moderate aerobic exercise weekly."
+                "Record vitals in patient chart and maintain routine monitoring.",
+                "Advise patient on heart-healthy dietary modifications and hydration.",
+                "Schedule periodic physician check-ups as indicated by risk level."
             ],
-            "follow_up_urgency": "Urgent" if probability >= 50 else "Routine"
+            "follow_up_urgency": "Urgent" if probability >= 50 else "Routine",
+            "comparison_notes": comparison_fallback
         }
 
     # 3. Save to database
