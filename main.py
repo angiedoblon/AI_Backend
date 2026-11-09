@@ -198,3 +198,51 @@ def get_history():
         return {"history": records}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+        @app.get("/export-csv")
+def export_csv():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 
+                timestamp,
+                patient_name,
+                age,
+                blood_pressure,
+                bmi,
+                risk_score,
+                risk_level 
+            FROM predictions 
+            ORDER BY id DESC;
+        """)
+        records = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        # Create in-memory CSV string
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow(["Timestamp", "Patient Name", "Age", "Blood Pressure", "Cholesterol (mg/dl)", "Risk Score (%)", "Risk Level"])
+        
+        # Write data rows
+        for row in records:
+            writer.writerow([
+                row["timestamp"],
+                row["patient_name"],
+                row["age"],
+                row["blood_pressure"],
+                row["bmi"],
+                row["risk_score"],
+                row["risk_level"]
+            ])
+            
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=patient_risk_records.csv"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
