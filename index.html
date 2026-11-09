@@ -30,7 +30,6 @@
             display: flex;
             min-height: 100vh;
         }
-        /* Navigation Sidebar */
         .sidebar {
             width: 220px;
             background-color: var(--sidebar-bg);
@@ -69,7 +68,6 @@
             background-color: #2b2e3a;
             color: #ffffff;
         }
-        /* Main Dashboard Shell */
         .main-content {
             flex: 1;
             padding: 28px;
@@ -78,7 +76,6 @@
             flex-direction: column;
             gap: 20px;
         }
-        /* Header Bar */
         .top-header {
             display: flex;
             justify-content: space-between;
@@ -106,7 +103,6 @@
             font-weight: 700;
             color: #fff;
         }
-        /* Metric Summary Cards */
         .metrics-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -124,7 +120,6 @@
         .metric-title { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
         .metric-value { font-size: 20px; font-weight: 700; color: #ffffff; }
         .metric-sub { font-size: 11px; color: var(--accent-cyan); }
-        /* Content Layout Grids */
         .dashboard-grid {
             display: grid;
             grid-template-columns: 1.8fr 1fr;
@@ -145,7 +140,6 @@
             justify-content: space-between;
             align-items: center;
         }
-        /* Input Form */
         .form-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -186,7 +180,6 @@
         }
         .btn-predict { background-color: var(--accent-green); color: #0f172a; }
         .btn-reset { background-color: var(--card-inner); color: var(--text-muted); border: 1px solid var(--border-color); }
-        /* Dynamic Score Output */
         .gauge-container {
             display: flex;
             flex-direction: column;
@@ -211,20 +204,13 @@
         }
         .badge-low { background-color: #0d948830; color: var(--accent-cyan); border: 1px solid var(--accent-cyan); }
         .badge-high { background-color: #ef444430; color: var(--accent-red); border: 1px solid var(--accent-red); }
-        
-        /* Filter Controls Styling */
         .filter-controls {
             display: flex;
             gap: 12px;
             margin-bottom: 14px;
         }
-        .filter-controls input {
-            flex: 2;
-        }
-        .filter-controls select {
-            flex: 1;
-        }
-        /* History Table Styling */
+        .filter-controls input { flex: 2; }
+        .filter-controls select { flex: 1; }
         .history-table {
             width: 100%;
             border-collapse: collapse;
@@ -255,7 +241,6 @@
     </style>
 </head>
 <body>
-    <!-- Left Navigation Bar -->
     <div class="sidebar">
         <div class="brand-logo">
             <span>🩺</span> Health Risk Assessment
@@ -265,10 +250,7 @@
         <a href="#model-parameters" class="nav-item" onclick="setActive(this)">⚙️ Model Parameters</a>
         <a href="https://health-risk-api-chnx.onrender.com/export-csv" class="nav-item" target="_blank">📥 Export CSV</a>
     </div>
-    <!-- Main Content Area -->
     <div class="main-content">
-        
-        <!-- Top Bar -->
         <div class="top-header">
             <h1>Patient Health Assessor Dashboard</h1>
             <div class="user-profile">
@@ -276,7 +258,6 @@
                 <span>Computer Engineering Lab</span>
             </div>
         </div>
-        <!-- Metric Summary Cards / Model Parameters Section -->
         <div class="metrics-grid" id="model-parameters">
             <div class="metric-card">
                 <div class="metric-title">Target Cholesterol</div>
@@ -299,14 +280,15 @@
                 <div class="metric-sub">FastAPI Live Connection</div>
             </div>
         </div>
-        <!-- Middle Section: Form Input & Prediction Score Gauge -->
         <div class="dashboard-grid" id="assessment-engine">
-            
-            <!-- Assessment Input Form Panel -->
             <div class="panel">
                 <div class="panel-title">Clinical Vitals Input Form</div>
                 <form id="healthForm" onsubmit="event.preventDefault(); predictRisk(event);">
                     <div class="form-grid">
+                        <div class="full-width">
+                            <label>Patient Full Name / ID</label>
+                            <input type="text" id="PatientName" value="John Doe" placeholder="Enter patient name..." required>
+                        </div>
                         <div>
                             <label>Age (1-120)</label>
                             <input type="number" id="Age" value="45" min="1" max="120" required>
@@ -373,7 +355,6 @@
                                 <option value="LVH">Left Ventricular Hypertrophy</option>
                             </select>
                         </div>
-                        <!-- New Physician Findings Input for Comparison -->
                         <div class="full-width">
                             <label>Physician's Findings / Diagnosis Notes (Optional for Comparison)</label>
                             <textarea id="DoctorsFindings" rows="2" placeholder="Paste doctor's diagnosis or notes here to compare against model prediction..." style="resize: vertical;"></textarea>
@@ -385,14 +366,12 @@
                     </div>
                 </form>
             </div>
-            <!-- Dynamic Risk Meter & Breakdown Panel -->
             <div class="panel" style="display: flex; flex-direction: column; justify-content: space-between;">
                 <div>
                     <div class="panel-title">
                         <span>Risk Score Assessment</span>
                         <span id="result-badge" class="status-badge badge-low">Ready</span>
                     </div>
-                    
                     <div class="gauge-container">
                         <canvas id="gaugeChart" width="180" height="110"></canvas>
                         <div class="gauge-score" id="result-prob">--%</div>
@@ -404,16 +383,13 @@
                 </div>
             </div>
         </div>
-        <!-- History Dashboard Panel / Patient Records Section -->
         <div class="panel" id="patient-records">
             <div class="panel-title">
                 <span>Recent Submissions History</span>
                 <button class="btn-refresh" onclick="loadHistory()">Refresh Records</button>
             </div>
-            
-            <!-- Search & Filter Controls -->
             <div class="filter-controls">
-                <input type="text" id="searchInput" placeholder="Search by date, age, or vitals..." oninput="filterHistory()">
+                <input type="text" id="searchInput" placeholder="Search by patient name, date, or vitals..." oninput="filterHistory()">
                 <select id="riskFilter" onchange="filterHistory()">
                     <option value="ALL">All Risk Levels</option>
                     <option value="Low">Low Risk</option>
@@ -425,6 +401,7 @@
                     <thead>
                         <tr>
                             <th>Date / Time</th>
+                            <th>Patient Name</th>
                             <th>Age</th>
                             <th>Resting BP</th>
                             <th>Cholesterol</th>
@@ -434,7 +411,7 @@
                     </thead>
                     <tbody id="historyTableBody">
                         <tr>
-                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 15px;">Loading history...</td>
+                            <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 15px;">Loading history...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -495,6 +472,7 @@
             summaryElement.innerText = "Analyzing vitals and generating nurse triage clinical notes...";
             
             const payload = {
+                PatientName: document.getElementById('PatientName').value || "Anonymous Patient",
                 Age: parseInt(document.getElementById('Age').value),
                 Sex: document.getElementById('Sex').value,
                 ChestPainType: document.getElementById('ChestPainType').value,
@@ -519,7 +497,6 @@
                     throw new Error(`Server returned status code ${response.status}`);
                 }
                 const data = await response.json();
-                console.log("API Full Payload Output:", data);
                 const probability = data.risk_probability_percent ?? data.risk_score ?? data.probability ?? 0;
                 const isHigh = data.heart_disease_risk === 1 || data.risk_level === 'High';
                 document.getElementById('result-prob').innerText = probability + '%';
@@ -533,7 +510,6 @@
                     badge.className = "status-badge badge-low";
                 }
 
-                // Enhanced rendering of AI clinical summary, nurse actions, and physician comparison
                 const ai = data.ai_analysis;
                 if (ai && ai.summary_notes) {
                     let urgencyColor = '#3b82f6';
@@ -595,7 +571,7 @@
                 globalHistoryData = data.history || [];
                 filterHistory();
             } catch (error) {
-                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--accent-red); padding: 15px;">Failed to load history data.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--accent-red); padding: 15px;">Failed to load history data.</td></tr>`;
             }
         }
         function filterHistory() {
@@ -605,16 +581,16 @@
             const filtered = globalHistoryData.filter(item => {
                 const matchesSearch = (
                     (item.timestamp && item.timestamp.toLowerCase().includes(searchTerm)) ||
+                    (item.patient_name && item.patient_name.toLowerCase().includes(searchTerm)) ||
                     (item.age && item.age.toString().includes(searchTerm)) ||
-                    (item.blood_pressure && item.blood_pressure.toString().includes(searchTerm)) ||
-                    (item.bmi && item.bmi.toString().includes(searchTerm))
+                    (item.blood_pressure && item.blood_pressure.toString().includes(searchTerm))
                 );
                 const matchesRisk = selectedRisk === 'ALL' || item.risk_level === selectedRisk;
                 return matchesSearch && matchesRisk;
             });
             tableBody.innerHTML = '';
             if (filtered.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 15px;">No matching records found.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 15px;">No matching records found.</td></tr>`;
                 return;
             }
             filtered.forEach(item => {
@@ -624,6 +600,7 @@
                 const row = `
                     <tr>
                         <td>${item.timestamp || 'N/A'}</td>
+                        <td style="font-weight: 600; color: #fff;">${item.patient_name || 'Anonymous'}</td>
                         <td>${item.age ?? '--'}</td>
                         <td>${item.blood_pressure ?? '--'} mmHg</td>
                         <td>${item.bmi ?? '--'} mg/dl</td>
@@ -635,6 +612,7 @@
             });
         }
         function resetForm() {
+            document.getElementById('PatientName').value = 'John Doe';
             document.getElementById('result-prob').innerText = '--%';
             document.getElementById('clinical-summary').innerText = "Vitals fall within normal reference ranges. Maintain regular monitoring.";
             initGauge(0, false);

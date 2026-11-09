@@ -19,7 +19,6 @@ app.add_middleware(
 DATABASE_URL = os.getenv("DATABASE_URL")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# Initialize OpenAI Client pointing to Google's free Gemini endpoint
 ai_client = None
 if GEMINI_API_KEY:
     ai_client = OpenAI(
@@ -42,6 +41,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS predictions (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            patient_name VARCHAR(100),
             age INT,
             blood_pressure INT,
             bmi INT,
@@ -65,6 +65,7 @@ def root():
 
 
 class HeartData(BaseModel):
+    PatientName: str = Field(default="Anonymous Patient", description="Name or ID of the patient being assessed")
     Age: int = Field(..., example=45)
     RestingBP: int = Field(..., example=120)
     Cholesterol: int = Field(..., example=200)
@@ -79,17 +80,15 @@ class HeartData(BaseModel):
     DoctorsFindings: str = Field(default="", description="Physician's actual diagnosis notes for comparison")
 
 
-# Structured Output Schema for AI response including comparative findings if provided
 class ClinicalInsight(BaseModel):
     summary_notes: str = Field(description="Initial clinical findings and nurse triage summary based on vitals.")
     primary_recommendations: list[str] = Field(description="List of 2-3 specific actionable nurse or clinical steps.")
     follow_up_urgency: str = Field(description="Level of follow-up required: 'Routine', 'Urgent', or 'Immediate'")
-    comparison_notes: str = Field(description="Comparison analysis alignment or discrepancies if doctor's findings were provided, else leave brief.")
+    comparison_notes: str = Field(description="Comparison analysis alignment or discrepancies if doctor's findings were provided.")
 
 
 @app.post("/predict")
 def predict(payload: HeartData):
-    # 1. Calculate dynamic risk score
     base_score = (payload.Age * 0.35) + (payload.RestingBP * 0.25) + (payload.Cholesterol * 0.15) + (payload.Oldpeak * 5.0)
     if payload.FastingBS == 1:
         base_score += 10
@@ -99,17 +98,16 @@ def predict(payload: HeartData):
     probability = round(min(max(base_score / 2.8, 10.0), 95.0), 1)
     risk_level = "High" if probability >= 50 else "Low"
 
-    # 2. Call Gemini API with Triage Nurse Persona & Doctor Finding Comparison
     ai_analysis = None
     if ai_client:
         try:
             user_content = (
-                f"Patient Age: {payload.Age}, Sex: {payload.Sex}, Resting BP: {payload.RestingBP}, "
+                f"Patient Name: {payload.PatientName}, Age: {payload.Age}, Sex: {payload.Sex}, Resting BP: {payload.RestingBP}, "
                 f"Cholesterol: {payload.Cholesterol}, Max HR: {payload.MaxHR}, Fasting BS: {payload.FastingBS}, "
                 f"Calculated Risk Score: {probability}% ({risk_level} Risk)."
             )
             if payload.DoctorsFindings:
-                user_content += f" Physician's Actual Findings/Diagnosis: '{payload.DoctorsFindings}'. Compare these findings against the automated model score and evaluate alignment."
+                user_content += f" Physician's Actual Findings/Diagnosis: '{payload.DoctorsFindings}'. Compare these findings against the automated model score."
 
             completion = ai_client.beta.chat.completions.parse(
                 model="gemini-2.5-flash",
@@ -118,8 +116,7 @@ def predict(payload: HeartData):
                         "role": "system", 
                         "content": (
                             "You are an expert triage nurse and clinical decision support assistant. "
-                            "Analyze the patient vitals to generate professional initial clinical findings for nurse assistance. "
-                            "If physician findings are provided, compare them against the calculated risk score."
+                            "Analyze the patient vitals to generate professional initial clinical findings for nurse assistance."
                         )
                     },
                     {
@@ -133,14 +130,13 @@ def predict(payload: HeartData):
         except Exception as e:
             print(f"Gemini AI Generation Error: {e}")
 
-    # Fallback if Gemini fails or GEMINI_API_KEY environment variable is not set
     if not ai_analysis:
         comparison_fallback = (
             f"Compared with physician findings ('{payload.DoctorsFindings}'): Automated model aligns with clinical risk metrics." 
             if payload.DoctorsFindings else "No external doctor findings provided for cross-comparison."
         )
         ai_analysis = {
-            "summary_notes": f"Initial triage review: Patient presents a {risk_level.lower()} cardiovascular risk profile ({probability}% probability). Key vitals include Resting BP of {payload.RestingBP} mmHg and Cholesterol of {payload.Cholesterol} mg/dl.",
+            "summary_notes": f"Initial triage review for {payload.PatientName}: Patient presents a {risk_level.lower()} cardiovascular risk profile ({probability}% probability).",
             "primary_recommendations": [
                 "Record vitals in patient chart and maintain routine monitoring.",
                 "Advise patient on heart-healthy dietary modifications and hydration.",
@@ -150,17 +146,19 @@ def predict(payload: HeartData):
             "comparison_notes": comparison_fallback
         }
 
-    # 3. Save to database
+    # Save to database including patient_name
     if DATABASE_URL:
         try:
             conn = get_db_connection()
             cur = conn.cursor()
+            # If table already exists without patient_name column, handle gracefully or run alter table
+            cur.execute("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS patient_name VARCHAR(100);")
             cur.execute(
                 """
-                INSERT INTO predictions (age, blood_pressure, bmi, risk_score, risk_level)
-                VALUES (%s, %s, %s, %s, %s);
+                INSERT INTO predictions (patient_name, age, blood_pressure, bmi, risk_score, risk_level)
+                VALUES (%s, %s, %s, %s, %s, %s);
                 """,
-                (payload.Age, payload.RestingBP, payload.Cholesterol, probability, risk_level)
+                (payload.PatientName, payload.Age, payload.RestingBP, payload.Cholesterol, probability, risk_level)
             )
             conn.commit()
             cur.close()
@@ -168,7 +166,6 @@ def predict(payload: HeartData):
         except Exception as e:
             print(f"Database insertion failed: {e}")
 
-    # 4. Return combined JSON output
     return {
         "heart_disease_risk": 1 if probability >= 50 else 0,
         "risk_probability_percent": probability,
@@ -185,6 +182,7 @@ def get_history():
         cur.execute("""
             SELECT 
                 TO_CHAR(timestamp, 'YYYY-MM-DD HH24:MI:SS') as timestamp,
+                COALESCE(patient_name, 'Anonymous') as patient_name,
                 age,
                 blood_pressure,
                 bmi,
