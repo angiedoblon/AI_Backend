@@ -245,6 +245,36 @@
             .panel { border: none !important; background: #fff !important; color: #000 !important; padding: 0 !important; }
             #clinical-summary { color: #000 !important; background: #fff !important; }
         }
+        /* Responsive Mobile Layout Fix */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column !important;
+            }
+            .sidebar {
+                width: 100% !important;
+                height: auto !important;
+                position: relative !important;
+                flex-direction: row !important;
+                flex-wrap: wrap;
+                gap: 10px;
+                padding: 14px !important;
+            }
+            .main-content {
+                padding: 16px !important;
+            }
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+            .dashboard-grid {
+                grid-template-columns: 1fr !important;
+            }
+            .form-grid {
+                grid-template-columns: 1fr !important;
+            }
+            .full-width {
+                grid-column: span 1 !important;
+            }
+        }
     </style>
 </head>
 <body>
