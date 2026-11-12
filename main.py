@@ -105,7 +105,7 @@ def predict(payload: HeartData):
             )
             
             response = client.models.generate_content(
-                model='gemini-2.5-flash', # Using stable flash model endpoint
+                model='gemini-3.8-flash', # Using stable flash model endpoint
                 contents=prompt,
                 config={
                     "response_mime_type": "application/json",
