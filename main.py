@@ -29,10 +29,8 @@ if GEMINI_API_KEY:
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
     )
 
-
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-
 
 def init_db():
     if not DATABASE_URL:
@@ -56,16 +54,13 @@ def init_db():
     cur.close()
     conn.close()
 
-
 @app.on_event("startup")
 def startup_event():
     init_db()
 
-
 @app.get("/")
 def root():
     return {"status": "online", "message": "Health Risk Assessor API is active."}
-
 
 class HeartData(BaseModel):
     PatientName: str = Field(default="Anonymous Patient", description="Name or ID of the patient being assessed")
@@ -83,13 +78,11 @@ class HeartData(BaseModel):
     DoctorsFindings: str = Field(default="", description="Physician's actual diagnosis notes for comparison")
     Symptoms: str = Field(default="", description="Observed nurse triage symptoms or notes")
 
-
 class ClinicalInsight(BaseModel):
-    summary_notes: str = Field(description="Initial clinical findings and nurse triage summary based on vitals.")
+    summary_notes: str = Field(description="Initial clinical findings and nurse triage summary uniquely customized based on exact patient vitals and symptoms.")
     primary_recommendations: list[str] = Field(description="List of 2-3 specific actionable nurse or clinical steps.")
     follow_up_urgency: str = Field(description="Level of follow-up required: 'Routine', 'Urgent', or 'Immediate'")
     comparison_notes: str = Field(description="Comparison analysis alignment or discrepancies if doctor's findings were provided.")
-
 
 @app.post("/predict")
 def predict(payload: HeartData):
@@ -106,13 +99,14 @@ def predict(payload: HeartData):
     if ai_client:
         try:
             user_content = (
-                f"Patient Name: {payload.PatientName}, Age: {payload.Age}, Sex: {payload.Sex}, Resting BP: {payload.RestingBP}, "
-                f"Cholesterol: {payload.Cholesterol}, Max HR: {payload.MaxHR}, Fasting BS: {payload.FastingBS}, "
-                f"Observed Symptoms/Notes: '{payload.Symptoms or 'None reported'}', "
-                f"Calculated Risk Score: {probability}% ({risk_level} Risk)."
+                f"Patient Name: {payload.PatientName}\n"
+                f"Demographics & Vitals: Age={payload.Age}, Sex={payload.Sex}, Resting BP={payload.RestingBP} mmHg, Cholesterol={payload.Cholesterol} mg/dL, Max HR={payload.MaxHR} bpm, Fasting BS={payload.FastingBS}\n"
+                f"Cardiac Indicators: Chest Pain Type={payload.ChestPainType}, Exercise Angina={payload.ExerciseAngina}, ST Slope={payload.ST_Slope}, Oldpeak={payload.Oldpeak}, Resting ECG={payload.RestingECG}\n"
+                f"Nurse Triage Symptoms: '{payload.Symptoms or 'None reported'}'\n"
+                f"Computed Model Risk Score: {probability}% ({risk_level} Risk)."
             )
             if payload.DoctorsFindings:
-                user_content += f" Physician's Actual Findings/Diagnosis: '{payload.DoctorsFindings}'. Compare these findings against the automated model score."
+                user_content += f"\nPhysician's Actual Findings/Diagnosis: '{payload.DoctorsFindings}'. Compare these findings against the automated model score."
             
             completion = ai_client.beta.chat.completions.parse(
                 model="gemini-2.5-flash",
@@ -121,7 +115,9 @@ def predict(payload: HeartData):
                         "role": "system", 
                         "content": (
                             "You are an expert triage nurse and clinical decision support assistant. "
-                            "Analyze the patient vitals to generate professional initial clinical findings for nurse assistance."
+                            "Analyze the unique patient vitals, symptoms, and specific lab values provided. "
+                            "Do NOT use a generic template. Craft distinct, highly tailored clinical findings "
+                            "that directly mention abnormal values (e.g., elevated BP or Cholesterol) and symptoms."
                         )
                     },
                     {
@@ -134,17 +130,21 @@ def predict(payload: HeartData):
             ai_analysis = completion.choices[0].message.parsed.model_dump()
         except Exception as e:
             print(f"Gemini AI Generation Error: {e}")
-
+            
     if not ai_analysis:
+        # Dynamic fallback ensuring unique notes if AI client fails
+        symptom_text = f" presenting with reported symptoms ({payload.Symptoms})" if payload.Symptoms else " with no acute symptoms checked"
+        vitals_highlight = f"Noted parameters include Blood Pressure at {payload.RestingBP} mmHg and Cholesterol at {payload.Cholesterol} mg/dL."
+        
         comparison_fallback = (
             f"Compared with physician findings ('{payload.DoctorsFindings}'): Automated model aligns with clinical risk metrics." 
             if payload.DoctorsFindings else "No external doctor findings provided for cross-comparison."
         )
         ai_analysis = {
-            "summary_notes": f"Initial triage review for {payload.PatientName}: Patient presents a {risk_level.lower()} cardiovascular risk profile ({probability}% probability).",
+            "summary_notes": f"Initial triage review for {payload.PatientName} (Age {payload.Age}): Patient presents a {risk_level.lower()} cardiovascular risk profile ({probability}% probability){symptom_text}. {vitals_highlight}",
             "primary_recommendations": [
-                "Record vitals in patient chart and maintain routine monitoring.",
-                "Advise patient on heart-healthy dietary modifications and hydration.",
+                f"Monitor vital signs closely, given the resting BP of {payload.RestingBP} mmHg.",
+                "Advise patient on cardiovascular risk factors and lifestyle modifications.",
                 "Schedule periodic physician check-ups as indicated by risk level."
             ],
             "follow_up_urgency": "Urgent" if probability >= 50 else "Routine",
@@ -176,7 +176,6 @@ def predict(payload: HeartData):
         "ai_analysis": ai_analysis
     }
 
-
 @app.get("/history")
 def get_history():
     try:
@@ -201,7 +200,6 @@ def get_history():
         return {"history": records}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.get("/export-csv")
 def export_csv():
