@@ -77,7 +77,7 @@ class HeartData(BaseModel):
     Symptoms: str = Field(default="", description="Observed nurse triage symptoms or notes")
 
 class ClinicalInsight(BaseModel):
-    summary_notes: str = Field(description="Initial clinical findings and nurse triage summary uniquely customized based on exact patient vitals and symptoms.")
+    summary_notes: str = Field(description="Unique, detailed clinical findings and narrative assessment tailored strictly to this specific patient's vitals, name, and symptoms.")
     primary_recommendations: list[str] = Field(description="List of 2-3 specific actionable nurse or clinical steps.")
     follow_up_urgency: str = Field(description="Level of follow-up required: 'Routine', 'Urgent', or 'Immediate'")
     comparison_notes: str = Field(description="Comparison analysis alignment or discrepancies if doctor's findings were provided.")
@@ -97,23 +97,13 @@ def predict(payload: HeartData):
     if genai_client:
         try:
             prompt = (
-                f"You are an expert Chief Clinical Triage AI and Medical Decision Support Assistant. "
-                f"Analyze the specific patient parameters, vital signs, and symptoms provided below and generate professional, "
-                f"highly individualized clinical findings and actionable nurse recommendations. Never use a generic template; "
-                f"explicitly reference the patient's name, age, specific vital values (such as BP {payload.RestingBP} mmHg, Cholesterol {payload.Cholesterol} mg/dL), "
-                f"and reported symptoms ('{payload.Symptoms}').\n\n"
-                f"Patient Name: {payload.PatientName}\n"
-                f"Age: {payload.Age}, Sex: {payload.Sex}\n"
-                f"Resting BP: {payload.RestingBP} mmHg\n"
-                f"Cholesterol: {payload.Cholesterol} mg/dL\n"
-                f"Max HR: {payload.MaxHR} bpm\n"
-                f"Fasting BS: {payload.FastingBS}\n"
-                f"Chest Pain Type: {payload.ChestPainType}\n"
-                f"Exercise Angina: {payload.ExerciseAngina}\n"
-                f"ST Slope: {payload.ST_Slope}, Oldpeak: {payload.Oldpeak}, Resting ECG: {payload.RestingECG}\n"
-                f"Symptoms Reported: {payload.Symptoms or 'None'}\n"
-                f"Computed Model Risk Score: {probability}% ({risk_level} Risk).\n"
-                f"Physician's Notes (if any): {payload.DoctorsFindings or 'None'}"
+                f"You are an expert Chief Clinical Triage AI. Analyze the following patient data and generate a completely unique, highly professional medical assessment note. "
+                f"Do not use generic templates. Mention the patient name ({payload.PatientName}), exact age ({payload.Age}), blood pressure ({payload.RestingBP} mmHg), "
+                f"cholesterol ({payload.Cholesterol} mg/dL), and symptoms ('{payload.Symptoms or 'None'}') directly in a narrative clinical tone.\n\n"
+                f"Patient: {payload.PatientName}, Age: {payload.Age}, Sex: {payload.Sex}\n"
+                f"Resting BP: {payload.RestingBP} | Cholesterol: {payload.Cholesterol} | Max HR: {payload.MaxHR}\n"
+                f"Symptoms: {payload.Symptoms or 'None'}\n"
+                f"Calculated Risk: {probability}% ({risk_level} Risk)"
             )
             
             response = genai_client.models.generate_content(
@@ -122,30 +112,21 @@ def predict(payload: HeartData):
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=ClinicalInsight,
-                    temperature=0.7,
+                    temperature=0.9, # Higher temperature ensures creative and unique responses every time
                 ),
             )
-            import json
-            ai_analysis = json.loads(response.text)
+            # The google-genai SDK automatically parses Pydantic response_schema into response.parsed
+            if response.parsed:
+                ai_analysis = response.parsed.dict() if hasattr(response.parsed, 'dict') else dict(response.parsed)
         except Exception as e:
             print(f"CRITICAL Google GenAI Error: {e}")
             
     if not ai_analysis:
-        symptom_notes = f" Patient reports active symptoms: {payload.Symptoms}." if payload.Symptoms else " No acute symptoms checked during intake."
-        vitals_notes = f" Vital signs reveal a resting blood pressure of {payload.RestingBP} mmHg and serum cholesterol of {payload.Cholesterol} mg/dL."
-        comparison_fallback = (
-            f"Compared with physician findings ('{payload.DoctorsFindings}'): Evaluation cross-referenced with automated metrics." 
-            if payload.DoctorsFindings else "No external doctor findings provided for cross-comparison."
-        )
         ai_analysis = {
-            "summary_notes": f"Clinical Triage Evaluation for {payload.PatientName} (Age {payload.Age}): Assessed with a {risk_level.lower()} risk profile ({probability}% probability).{vitals_notes}{symptom_notes}",
-            "primary_recommendations": [
-                f"Initiate continuous hemodynamic monitoring given resting BP of {payload.RestingBP} mmHg.",
-                "Provide targeted patient counseling on cardiovascular risk reduction and dietary sodium/lipid management.",
-                "Facilitate urgent physician review if symptoms escalate or persist."
-            ],
-            "follow_up_urgency": "Urgent" if probability >= 50 else "Routine",
-            "comparison_notes": comparison_fallback
+            "summary_notes": f"[LIVE AI OFFLINE FALLBACK] Patient {payload.PatientName} evaluated with {probability}% risk score.",
+            "primary_recommendations": ["Perform manual chart verification.", "Consult attending physician."],
+            "follow_up_urgency": "Routine",
+            "comparison_notes": "No doctor findings provided."
         }
 
     if DATABASE_URL:
