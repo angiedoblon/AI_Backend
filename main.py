@@ -2,6 +2,7 @@ import os
 import csv
 import io
 import json
+import time
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException
@@ -85,54 +86,63 @@ def predict(payload: HeartData):
     ai_analysis = None
     
     if GEMINI_API_KEY:
-        try:
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            prompt = (
-                f"You are an expert Chief Clinical Triage AI. Analyze this unique patient profile and write a completely distinct, "
-                f"individualized medical assessment note tailored strictly to these numbers. Do not use generic templates.\n"
-                f"- Patient Name: {payload.PatientName}\n"
-                f"- Age: {payload.Age}, Sex: {payload.Sex}\n"
-                f"- Resting BP: {payload.RestingBP} mmHg, Cholesterol: {payload.Cholesterol} mg/dL\n"
-                f"- Max HR: {payload.MaxHR} bpm, Fasting BS: {payload.FastingBS}, Chest Pain: {payload.ChestPainType}\n"
-                f"- Exercise Angina: {payload.ExerciseAngina}, ST Slope: {payload.ST_Slope}, Oldpeak: {payload.Oldpeak}\n"
-                f"- Active Symptoms: {payload.Symptoms or 'None'}\n"
-                f"- Computed Risk Score: {probability}% ({risk_level} Risk)\n\n"
-                f"Provide your response in JSON format with these exact keys: "
-                f"\"summary_notes\" (string detailing specific findings for this patient), "
-                f"\"primary_recommendations\" (list of 3 unique string actions), "
-                f"\"follow_up_urgency\" (string: 'Routine', 'Urgent', or 'Immediate'), "
-                f"and \"comparison_notes\" (string comparing against doctor's notes if provided: '{payload.DoctorsFindings}')."
-            )
-            
-            response = client.models.generate_content(
-                model='gemini-3.8-flash', # Using stable flash model endpoint
-                contents=prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "temperature": 0.9  # High temperature ensures variety across submissions
-                }
-            )
-            ai_analysis = json.loads(response.text)
-        except Exception as e:
-            print(f"Gemini SDK Error: {e}")
-            error_str = str(e)
-            if "429" in error_str:
-                msg = f"Rate limit reached for {payload.PatientName}. Dynamic clinical evaluation generated via fallback rules."
-            elif "503" in error_str:
-                msg = f"Gemini high demand encountered for {payload.PatientName}. Vitals analyzed at {probability}% risk."
-            else:
-                msg = f"Individualized review for {payload.PatientName} (Age {payload.Age}, BP: {payload.RestingBP}mmHg): Evaluated at {probability}% risk score."
-            
-            ai_analysis = {
-                "summary_notes": msg + f" Patient presents with {payload.ChestPainType.lower()} chest pain patterns and max heart rate of {payload.MaxHR} bpm.",
-                "primary_recommendations": [
-                    f"Perform serial ECG monitoring considering ST-slope '{payload.ST_Slope}' and oldpeak value of {payload.Oldpeak}.",
-                    f"Evaluate lipid profile targeting standard <200 mg/dl thresholds relative to current {payload.Cholesterol} mg/dl level.",
-                    f"Schedule follow-up consultation based on {risk_level.lower()} risk categorization."
-                ],
-                "follow_up_urgency": "Urgent" if probability >= 50 else "Routine",
-                "comparison_notes": f"Physician note comparison for '{payload.DoctorsFindings}': Cross-verified with automated clinical indicators." if payload.DoctorsFindings else "No comparative physician notes supplied."
-            }
+        max_retries = 3
+        retry_delay = 1.5
+        for attempt in range(max_retries):
+            try:
+                client = genai.Client(api_key=GEMINI_API_KEY)
+                prompt = (
+                    f"You are an expert Chief Clinical Triage AI. Analyze this unique patient profile and write a completely distinct, "
+                    f"individualized medical assessment note tailored strictly to these numbers. Do not use generic templates.\n"
+                    f"- Patient Name: {payload.PatientName}\n"
+                    f"- Age: {payload.Age}, Sex: {payload.Sex}\n"
+                    f"- Resting BP: {payload.RestingBP} mmHg, Cholesterol: {payload.Cholesterol} mg/dL\n"
+                    f"- Max HR: {payload.MaxHR} bpm, Fasting BS: {payload.FastingBS}, Chest Pain: {payload.ChestPainType}\n"
+                    f"- Exercise Angina: {payload.ExerciseAngina}, ST Slope: {payload.ST_Slope}, Oldpeak: {payload.Oldpeak}\n"
+                    f"- Active Symptoms: {payload.Symptoms or 'None'}\n"
+                    f"- Computed Risk Score: {probability}% ({risk_level} Risk)\n\n"
+                    f"Provide your response in JSON format with these exact keys: "
+                    f"\"summary_notes\" (string detailing specific findings for this patient), "
+                    f"\"primary_recommendations\" (list of 3 unique string actions), "
+                    f"\"follow_up_urgency\" (string: 'Routine', 'Urgent', or 'Immediate'), "
+                    f"and \"comparison_notes\" (string comparing against doctor's notes if provided: '{payload.DoctorsFindings}')."
+                )
+                
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                    config={
+                        "response_mime_type": "application/json",
+                        "temperature": 0.9  
+                    }
+                )
+                ai_analysis = json.loads(response.text)
+                break  # Successful call, exit retry loop
+            except Exception as e:
+                print(f"Gemini API attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff delay
+                else:
+                    # Final failure fallback generation
+                    error_str = str(e)
+                    if "429" in error_str:
+                        msg = f"Rate limit reached for {payload.PatientName}. Dynamic clinical evaluation generated via fallback rules."
+                    elif "503" in error_str:
+                        msg = f"Gemini high demand encountered for {payload.PatientName}. Vitals analyzed at {probability}% risk."
+                    else:
+                        msg = f"Individualized review for {payload.PatientName} (Age {payload.Age}, BP: {payload.RestingBP}mmHg): Evaluated at {probability}% risk score."
+                    
+                    ai_analysis = {
+                        "summary_notes": msg + f" Patient presents with {payload.ChestPainType.lower()} chest pain patterns and max heart rate of {payload.MaxHR} bpm.",
+                        "primary_recommendations": [
+                            f"Perform serial ECG monitoring considering ST-slope '{payload.ST_Slope}' and oldpeak value of {payload.Oldpeak}.",
+                            f"Evaluate lipid profile targeting standard <200 mg/dl thresholds relative to current {payload.Cholesterol} mg/dl level.",
+                            f"Schedule follow-up consultation based on {risk_level.lower()} risk categorization."
+                        ],
+                        "follow_up_urgency": "Urgent" if probability >= 50 else "Routine",
+                        "comparison_notes": f"Physician note comparison for '{payload.DoctorsFindings}': Cross-verified with automated clinical indicators." if payload.DoctorsFindings else "No comparative physician notes supplied."
+                    }
 
     if DATABASE_URL:
         try:
