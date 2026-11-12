@@ -96,8 +96,6 @@ def predict(payload: HeartData):
     risk_level = "High" if probability >= 50 else "Low"
     ai_analysis = None
     
-   ai_analysis = None
-    
     if ai_client:
         try:
             user_content = (
@@ -111,7 +109,7 @@ def predict(payload: HeartData):
                 user_content += f"\nPhysician's Actual Findings: '{payload.DoctorsFindings}'. Cross-compare these findings against the patient vitals and risk score."
             
             completion = ai_client.beta.chat.completions.parse(
-                model="gemini-1.5-flash",  # Updated to gemini-1.5-flash for stable OpenAI wrapper compatibility
+                model="gemini-1.5-flash",
                 messages=[
                     {
                         "role": "system", 
@@ -134,7 +132,6 @@ def predict(payload: HeartData):
             print(f"CRITICAL Gemini AI Generation Error: {e}")
             
     if not ai_analysis:
-        # Professional clinical fallback if AI service is unreachable
         symptom_notes = f" Patient reports active symptoms: {payload.Symptoms}." if payload.Symptoms else " No acute symptoms checked during intake."
         vitals_notes = f" Vital signs reveal a resting blood pressure of {payload.RestingBP} mmHg and serum cholesterol of {payload.Cholesterol} mg/dL."
         
