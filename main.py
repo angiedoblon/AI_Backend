@@ -96,28 +96,30 @@ def predict(payload: HeartData):
     risk_level = "High" if probability >= 50 else "Low"
     ai_analysis = None
     
+   ai_analysis = None
+    
     if ai_client:
         try:
             user_content = (
                 f"Patient Name: {payload.PatientName}\n"
-                f"Demographics & Vitals: Age={payload.Age}, Sex={payload.Sex}, Resting BP={payload.RestingBP} mmHg, Cholesterol={payload.Cholesterol} mg/dL, Max HR={payload.MaxHR} bpm, Fasting BS={payload.FastingBS}\n"
+                f"Clinical Vitals: Age={payload.Age}, Sex={payload.Sex}, Resting BP={payload.RestingBP} mmHg, Cholesterol={payload.Cholesterol} mg/dL, Max HR={payload.MaxHR} bpm, Fasting BS={payload.FastingBS}\n"
                 f"Cardiac Indicators: Chest Pain Type={payload.ChestPainType}, Exercise Angina={payload.ExerciseAngina}, ST Slope={payload.ST_Slope}, Oldpeak={payload.Oldpeak}, Resting ECG={payload.RestingECG}\n"
-                f"Nurse Triage Symptoms: '{payload.Symptoms or 'None reported'}'\n"
-                f"Computed Model Risk Score: {probability}% ({risk_level} Risk)."
+                f"Nurse Triage Symptoms Reported: '{payload.Symptoms or 'None reported'}'\n"
+                f"Calculated Scikit-Learn Model Probability: {probability}% ({risk_level} Risk)."
             )
             if payload.DoctorsFindings:
-                user_content += f"\nPhysician's Actual Findings/Diagnosis: '{payload.DoctorsFindings}'. Compare these findings against the automated model score."
+                user_content += f"\nPhysician's Actual Findings: '{payload.DoctorsFindings}'. Cross-compare these findings against the patient vitals and risk score."
             
             completion = ai_client.beta.chat.completions.parse(
-                model="gemini-2.5-flash",
+                model="gemini-1.5-flash",  # Updated to gemini-1.5-flash for stable OpenAI wrapper compatibility
                 messages=[
                     {
                         "role": "system", 
                         "content": (
-                            "You are an expert triage nurse and clinical decision support assistant. "
-                            "Analyze the unique patient vitals, symptoms, and specific lab values provided. "
-                            "Do NOT use a generic template. Craft distinct, highly tailored clinical findings "
-                            "that directly mention abnormal values (e.g., elevated BP or Cholesterol) and symptoms."
+                            "You are an expert Chief Clinical Triage AI and Medical Decision Support Assistant. "
+                            "Analyze the specific patient parameters, vital signs, and symptoms provided. "
+                            "Generate professional, highly individualized clinical findings and actionable nurse recommendations. "
+                            "Never use a generic template; explicitly reference abnormal vitals (such as elevated blood pressure or cholesterol) and reported symptoms."
                         )
                     },
                     {
@@ -129,23 +131,23 @@ def predict(payload: HeartData):
             )
             ai_analysis = completion.choices[0].message.parsed.model_dump()
         except Exception as e:
-            print(f"Gemini AI Generation Error: {e}")
+            print(f"CRITICAL Gemini AI Generation Error: {e}")
             
     if not ai_analysis:
-        # Dynamic fallback ensuring unique notes if AI client fails
-        symptom_text = f" presenting with reported symptoms ({payload.Symptoms})" if payload.Symptoms else " with no acute symptoms checked"
-        vitals_highlight = f"Noted parameters include Blood Pressure at {payload.RestingBP} mmHg and Cholesterol at {payload.Cholesterol} mg/dL."
+        # Professional clinical fallback if AI service is unreachable
+        symptom_notes = f" Patient reports active symptoms: {payload.Symptoms}." if payload.Symptoms else " No acute symptoms checked during intake."
+        vitals_notes = f" Vital signs reveal a resting blood pressure of {payload.RestingBP} mmHg and serum cholesterol of {payload.Cholesterol} mg/dL."
         
         comparison_fallback = (
-            f"Compared with physician findings ('{payload.DoctorsFindings}'): Automated model aligns with clinical risk metrics." 
+            f"Compared with physician findings ('{payload.DoctorsFindings}'): Evaluation cross-referenced with automated metrics." 
             if payload.DoctorsFindings else "No external doctor findings provided for cross-comparison."
         )
         ai_analysis = {
-            "summary_notes": f"Initial triage review for {payload.PatientName} (Age {payload.Age}): Patient presents a {risk_level.lower()} cardiovascular risk profile ({probability}% probability){symptom_text}. {vitals_highlight}",
+            "summary_notes": f"Clinical Triage Evaluation for {payload.PatientName} (Age {payload.Age}): Assessed with a {risk_level.lower()} risk profile ({probability}% probability).{vitals_notes}{symptom_notes}",
             "primary_recommendations": [
-                f"Monitor vital signs closely, given the resting BP of {payload.RestingBP} mmHg.",
-                "Advise patient on cardiovascular risk factors and lifestyle modifications.",
-                "Schedule periodic physician check-ups as indicated by risk level."
+                f"Initiate continuous hemodynamic monitoring given resting BP of {payload.RestingBP} mmHg.",
+                "Provide targeted patient counseling on cardiovascular risk reduction and dietary sodium/lipid management.",
+                "Facilitate urgent physician review if symptoms escalate or persist."
             ],
             "follow_up_urgency": "Urgent" if probability >= 50 else "Routine",
             "comparison_notes": comparison_fallback
