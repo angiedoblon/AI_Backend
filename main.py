@@ -2,13 +2,13 @@ import os
 import csv
 import io
 import json
-import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from google import genai
 
 app = FastAPI()
 
@@ -72,12 +72,6 @@ class HeartData(BaseModel):
     DoctorsFindings: str = Field(default="", description="Physician's actual diagnosis notes for comparison")
     Symptoms: str = Field(default="", description="Observed nurse triage symptoms or notes")
 
-class ClinicalInsight(BaseModel):
-    summary_notes: str = Field(description="Unique, detailed clinical findings and narrative assessment tailored strictly to this specific patient's vitals, name, and symptoms.")
-    primary_recommendations: list[str] = Field(description="List of 2-3 specific actionable nurse or clinical steps.")
-    follow_up_urgency: str = Field(description="Level of follow-up required: 'Routine', 'Urgent', or 'Immediate'")
-    comparison_notes: str = Field(description="Comparison analysis alignment or discrepancies if doctor's findings were provided.")
-
 @app.post("/predict")
 def predict(payload: HeartData):
     base_score = (payload.Age * 0.35) + (payload.RestingBP * 0.25) + (payload.Cholesterol * 0.15) + (payload.Oldpeak * 5.0)
@@ -89,11 +83,10 @@ def predict(payload: HeartData):
     probability = round(min(max(base_score / 2.8, 10.0), 95.0), 1)
     risk_level = "High" if probability >= 50 else "Low"
     ai_analysis = None
+    
     if GEMINI_API_KEY:
         try:
-            from google import genai
             client = genai.Client(api_key=GEMINI_API_KEY)
-            
             prompt = (
                 f"You are an expert Chief Clinical Triage AI. Analyze this patient profile and write a completely unique, "
                 f"professional medical assessment. Do not use generic templates.\n"
@@ -109,8 +102,8 @@ def predict(payload: HeartData):
                 f"and \"comparison_notes\" (string)."
             )
             
-           response = client.models.generate_content(
-                model='gemini-3.8-flash',
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
                 contents=prompt,
                 config={
                     "response_mime_type": "application/json",
@@ -122,7 +115,6 @@ def predict(payload: HeartData):
             print(f"Gemini SDK Error: {e}")
 
     if not ai_analysis:
-        # Dynamic fallback if network/API hiccups
         symptom_txt = f" Patient reports: {payload.Symptoms}." if payload.Symptoms else " No acute symptoms noted."
         ai_analysis = {
             "summary_notes": f"Triage evaluation for {payload.PatientName} (Age {payload.Age}): Assessed at {probability}% risk ({risk_level}). Blood pressure is {payload.RestingBP} mmHg with cholesterol at {payload.Cholesterol} mg/dL.{symptom_txt}",
