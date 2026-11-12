@@ -7,7 +7,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from openai import OpenAI
+from google import genai
+from google.genai import types
 
 app = FastAPI()
 
@@ -22,12 +23,9 @@ app.add_middleware(
 DATABASE_URL = os.getenv("DATABASE_URL")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-ai_client = None
+genai_client = None
 if GEMINI_API_KEY:
-    ai_client = OpenAI(
-        api_key=GEMINI_API_KEY,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-    )
+    genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
@@ -96,45 +94,45 @@ def predict(payload: HeartData):
     risk_level = "High" if probability >= 50 else "Low"
     ai_analysis = None
     
-    if ai_client:
+    if genai_client:
         try:
-            user_content = (
+            prompt = (
+                f"You are an expert Chief Clinical Triage AI and Medical Decision Support Assistant. "
+                f"Analyze the specific patient parameters, vital signs, and symptoms provided below and generate professional, "
+                f"highly individualized clinical findings and actionable nurse recommendations. Never use a generic template; "
+                f"explicitly reference the patient's name, age, specific vital values (such as BP {payload.RestingBP} mmHg, Cholesterol {payload.Cholesterol} mg/dL), "
+                f"and reported symptoms ('{payload.Symptoms}').\n\n"
                 f"Patient Name: {payload.PatientName}\n"
-                f"Clinical Vitals: Age={payload.Age}, Sex={payload.Sex}, Resting BP={payload.RestingBP} mmHg, Cholesterol={payload.Cholesterol} mg/dL, Max HR={payload.MaxHR} bpm, Fasting BS={payload.FastingBS}\n"
-                f"Cardiac Indicators: Chest Pain Type={payload.ChestPainType}, Exercise Angina={payload.ExerciseAngina}, ST Slope={payload.ST_Slope}, Oldpeak={payload.Oldpeak}, Resting ECG={payload.RestingECG}\n"
-                f"Nurse Triage Symptoms Reported: '{payload.Symptoms or 'None reported'}'\n"
-                f"Calculated Scikit-Learn Model Probability: {probability}% ({risk_level} Risk)."
+                f"Age: {payload.Age}, Sex: {payload.Sex}\n"
+                f"Resting BP: {payload.RestingBP} mmHg\n"
+                f"Cholesterol: {payload.Cholesterol} mg/dL\n"
+                f"Max HR: {payload.MaxHR} bpm\n"
+                f"Fasting BS: {payload.FastingBS}\n"
+                f"Chest Pain Type: {payload.ChestPainType}\n"
+                f"Exercise Angina: {payload.ExerciseAngina}\n"
+                f"ST Slope: {payload.ST_Slope}, Oldpeak: {payload.Oldpeak}, Resting ECG: {payload.RestingECG}\n"
+                f"Symptoms Reported: {payload.Symptoms or 'None'}\n"
+                f"Computed Model Risk Score: {probability}% ({risk_level} Risk).\n"
+                f"Physician's Notes (if any): {payload.DoctorsFindings or 'None'}"
             )
-            if payload.DoctorsFindings:
-                user_content += f"\nPhysician's Actual Findings: '{payload.DoctorsFindings}'. Cross-compare these findings against the patient vitals and risk score."
             
-            completion = ai_client.beta.chat.completions.parse(
-                model="gemini-1.5-flash",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": (
-                            "You are an expert Chief Clinical Triage AI and Medical Decision Support Assistant. "
-                            "Analyze the specific patient parameters, vital signs, and symptoms provided. "
-                            "Generate professional, highly individualized clinical findings and actionable nurse recommendations. "
-                            "Never use a generic template; explicitly reference abnormal vitals (such as elevated blood pressure or cholesterol) and reported symptoms."
-                        )
-                    },
-                    {
-                        "role": "user", 
-                        "content": user_content
-                    }
-                ],
-                response_format=ClinicalInsight,
+            response = genai_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ClinicalInsight,
+                    temperature=0.7,
+                ),
             )
-            ai_analysis = completion.choices[0].message.parsed.model_dump()
+            import json
+            ai_analysis = json.loads(response.text)
         except Exception as e:
-            print(f"CRITICAL Gemini AI Generation Error: {e}")
+            print(f"CRITICAL Google GenAI Error: {e}")
             
     if not ai_analysis:
         symptom_notes = f" Patient reports active symptoms: {payload.Symptoms}." if payload.Symptoms else " No acute symptoms checked during intake."
         vitals_notes = f" Vital signs reveal a resting blood pressure of {payload.RestingBP} mmHg and serum cholesterol of {payload.Cholesterol} mg/dL."
-        
         comparison_fallback = (
             f"Compared with physician findings ('{payload.DoctorsFindings}'): Evaluation cross-referenced with automated metrics." 
             if payload.DoctorsFindings else "No external doctor findings provided for cross-comparison."
