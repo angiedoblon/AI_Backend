@@ -221,4 +221,11 @@ def export_csv():
             headers={"Content-Disposition": "attachment; filename=patient_risk_records.csv"}
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+            print(f"Gemini SDK Error: {e}")
+            if "429" in str(e):
+                ai_analysis = {
+                    "summary_notes": f"[RATE LIMIT REACHED] Free tier quota (5 req/min) temporarily exceeded for {payload.PatientName}. Please wait 30 seconds and click Evaluate again. Calculated Risk: {probability}% ({risk_level}).",
+                    "primary_recommendations": ["Wait 30 seconds before next evaluation.", "Review calculated risk score metrics directly."],
+                    "follow_up_urgency": "Routine",
+                    "comparison_notes": "API rate limit pause."
+                }
