@@ -1,10 +1,19 @@
 
+import sys
+from pathlib import Path
 import joblib
+
+# Locate the model folder and support modules
+BASE_DIR = Path(__file__).resolve().parent
+SUPPORT_DIR = BASE_DIR / "healthriskfm_support_modules"
+
+# Make preprocessing, explainability, and utils importable
+sys.path.insert(0, str(SUPPORT_DIR))
 
 print("Loading HealthRiskFM model...")
 
-pipeline = joblib.load("pipeline.joblib")
-model = joblib.load("model.joblib")
+pipeline = joblib.load(BASE_DIR / "pipeline.joblib")
+model = joblib.load(BASE_DIR / "model.joblib")
 
 print("\n===== PIPELINE INFORMATION =====")
 print("Pipeline type:", type(pipeline))

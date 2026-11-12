@@ -1,11 +1,18 @@
 
+import sys
+from pathlib import Path
 import joblib
 import pandas as pd
 
+BASE_DIR = Path(__file__).resolve().parent
+SUPPORT_DIR = BASE_DIR / "healthriskfm_support_modules"
+
+sys.path.insert(0, str(SUPPORT_DIR))
+
 print("Loading HealthRiskFM...")
 
-pipeline = joblib.load("pipeline.joblib")
-model = joblib.load("model.joblib")
+pipeline = joblib.load(BASE_DIR / "pipeline.joblib")
+model = joblib.load(BASE_DIR / "model.joblib")
 
 # Sample patient information
 patient = pd.DataFrame([{

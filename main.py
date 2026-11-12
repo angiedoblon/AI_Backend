@@ -1,4 +1,6 @@
+
 import os
+from dotenv import load_dotenv
 import csv
 import io
 import json
@@ -39,8 +41,14 @@ SUPPORT_DIR = MODEL_DIR / "healthriskfm_support_modules"
 PIPELINE_PATH = MODEL_DIR / "pipeline.joblib"
 MODEL_PATH = MODEL_DIR / "model.joblib"
 
+load_dotenv()
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-3.5-flash-lite"
+)
 
 # The custom classes used by the saved preprocessing pipeline
 # must be importable before joblib loads the saved objects.
@@ -270,33 +278,13 @@ def predict(payload: HeartData):
 
     ai_analysis = None
 
-    # =====================================================
-    # 8. OPTIONAL GEMINI EXPLANATION
-    # Gemini is disabled by default so a temporary Gemini outage cannot
-    # delay or block the HealthRiskFM prediction response.
-    ai_analysis = {
-        "summary_notes": (
-            f"HealthRiskFM classified this assessment as {risk_level}. "
-            f"Its class 1 probability was {probability}%. "
-            "This is an experimental model result, not a medical diagnosis "
-            "or a calibrated clinical risk estimate."
-        ),
-        "primary_recommendations": [
-            "Discuss the assessment results with a qualified healthcare professional.",
-            "Review the patient's symptoms and clinical history.",
-            "Consider further evaluation as advised by a healthcare professional."
-        ],
-        "follow_up_urgency": "Routine",
-        "comparison_notes": (
-            "This is an automatic summary of the Random Forest output. "
-            "Physician findings were not independently verified by the model."
-        )
-    }
 
-    # Set ENABLE_GEMINI_ANALYSIS=true in Render only if you want to enable
-    # Gemini. It is a single attempt (no retry loop) and any failure falls
-    # back to the summary above.
-    if GEMINI_API_KEY and os.getenv("ENABLE_GEMINI_ANALYSIS", "false").lower() == "true":
+    # =====================================================
+    # 8. GEMINI EXPLANATION
+    # =====================================================
+
+    if GEMINI_API_KEY:
+
         try:
             client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -305,6 +293,7 @@ You are assisting with explanations for an experimental
 heart disease risk assessment system.
 
 The HealthRiskFM Random Forest model produced this result:
+
 Age: {payload.Age}
 Sex: {payload.Sex}
 Resting Blood Pressure: {payload.RestingBP} mmHg
@@ -327,12 +316,18 @@ Physician findings: {payload.DoctorsFindings or "None provided"}
 Explain the model result in simple, understandable language.
 
 Important:
-- Do not claim this is a confirmed medical diagnosis.
-- Explain that the percentage is an uncalibrated model probability.
-- Do not invent patient symptoms or medical findings.
-- Do not recommend medication or treatment based only on this result.
+- This is not a confirmed medical diagnosis.
+- The percentage is an uncalibrated model probability,
+  not a validated clinical risk estimate.
+- Symptoms and physician findings are NOT inputs to the
+  Random Forest model and did not affect its prediction.
+- Do not imply that symptoms or physician findings
+  influenced the model classification.
+- Do not invent symptoms or medical findings.
+- Do not recommend medication or treatment based only
+  on this result.
 - Encourage professional medical assessment.
-- If the patient reports severe or emergency symptoms, advise
+- If severe or emergency symptoms are reported, advise
   immediate emergency medical evaluation.
 
 Return valid JSON with exactly these keys:
@@ -344,23 +339,186 @@ Return valid JSON with exactly these keys:
 Use Routine, Urgent, or Immediate for follow_up_urgency.
 Do not determine urgency from the model percentage alone.
 """
+
             response = client.models.generate_content(
-                model="gemini-3.8-flash",
+                model=GEMINI_MODEL,
                 contents=prompt,
                 config={
                     "response_mime_type": "application/json",
                     "temperature": 0.5
                 }
             )
-            generated_analysis = json.loads(response.text)
-            if isinstance(generated_analysis, dict):
-                ai_analysis = generated_analysis
-        except Exception as gemini_error:
-            print(
-                "Gemini analysis unavailable; returning the "
-                f"HealthRiskFM result with fallback explanation: {gemini_error}"
-            )
 
+            ai_analysis = json.loads(response.text)
+
+            required_keys = [
+                "summary_notes",
+                "primary_recommendations",
+                "follow_up_urgency",
+                "comparison_notes"
+            ]
+
+            if not all(key in ai_analysis for key in required_keys):
+                raise ValueError("Gemini response is missing required fields.")
+
+            if not isinstance(ai_analysis["primary_recommendations"], list):
+                raise ValueError("Gemini recommendations must be a list.")
+
+            if ai_analysis["follow_up_urgency"] not in [
+                "Routine", "Urgent", "Immediate"
+            ]:
+                ai_analysis["follow_up_urgency"] = "Routine"
+
+            print("Gemini personalized explanation generated successfully.")
+
+        except Exception as e:
+
+            print(f"Gemini explanation failed: {e}")
+
+            ai_analysis = {
+                "summary_notes": (
+                    f"HealthRiskFM classified this assessment as "
+                    f"{risk_level}. Its class 1 probability was "
+                    f"{probability}%. This is an experimental model "
+                    f"result, not a medical diagnosis. Symptoms and "
+                    f"physician findings were not used by the "
+                    f"Random Forest prediction."
+                ),
+                "primary_recommendations": [
+                    "Discuss the assessment results with a qualified healthcare professional.",
+                    "Review the patient's symptoms and clinical history.",
+                    "Consider further evaluation as advised by a healthcare professional."
+                ],
+                "follow_up_urgency": "Routine",
+                "comparison_notes": (
+                    "The Random Forest prediction was based on its "
+                    "18 model features. Symptoms and physician findings "
+                    "were provided separately and did not affect the "
+                    "prediction."
+                )
+            }
+
+    else:
+
+        ai_analysis = {
+            "summary_notes": (
+                f"HealthRiskFM classified this assessment as "
+                f"{risk_level}. Its class 1 probability was "
+                f"{probability}%. This is an experimental model "
+                f"result, not a medical diagnosis."
+            ),
+            "primary_recommendations": [
+                "Discuss the assessment results with a qualified healthcare professional.",
+                "Review the patient's symptoms and clinical history.",
+                "Consider further evaluation as advised by a healthcare professional."
+            ],
+            "follow_up_urgency": "Routine",
+            "comparison_notes": (
+                "Gemini is unavailable because no API key is configured. "
+                "Symptoms and physician findings did not affect the "
+                "Random Forest prediction."
+            )
+        }
+
+
+
+    # 8.5. SYMPTOM-BASED SAFETY CHECK
+    # This changes follow-up guidance only.
+    # It does not change the Random Forest prediction.
+
+    symptom_text = (
+        f"{payload.Symptoms or ''} "
+        f"{payload.DoctorsFindings or ''}"
+    ).lower()
+
+    def contains_symptom(phrases):
+        for phrase in phrases:
+            start = 0
+
+            while True:
+                position = symptom_text.find(phrase, start)
+
+                if position == -1:
+                    break
+
+                preceding_text = symptom_text[
+                    max(0, position - 30):position
+                ].strip()
+
+
+                negations = (
+                    "no",
+                    "denies",
+                    "denied",
+                    "without",
+                    "not experiencing",
+                    "not having"
+                )
+
+                if not any(
+                    preceding_text == word
+                    or preceding_text.endswith(" " + word)
+                    for word in negations
+                ):
+                    return True
+
+
+                start = position + len(phrase)
+
+        return False
+
+    emergency_symptoms = [
+        "severe chest pain",
+        "crushing chest pain",
+        "severe chest pressure",
+        "persistent chest pain",
+        "ongoing chest pain",
+        "severe shortness of breath",
+        "severe difficulty breathing",
+        "difficulty breathing at rest",
+        "fainting now",
+        "just fainted",
+        "loss of consciousness",
+        "stroke-like symptoms"
+    ]
+
+    concerning_symptoms = [
+        "chest discomfort",
+        "chest pain",
+        "chest tightness",
+        "chest pressure",
+        "shortness of breath",
+        "difficulty breathing",
+        "breathlessness",
+        "exertional dyspnea"
+    ]
+
+    if contains_symptom(emergency_symptoms):
+
+        ai_analysis["follow_up_urgency"] = "Immediate"
+
+        ai_analysis["primary_recommendations"] = [
+            "Seek emergency medical evaluation immediately for the reported severe or potentially life-threatening symptoms.",
+            "Do not rely on the experimental machine-learning result to decide whether emergency care is needed.",
+            "Share the reported symptoms and relevant medical information with emergency healthcare professionals."
+        ]
+
+    elif contains_symptom(concerning_symptoms):
+
+        ai_analysis["follow_up_urgency"] = "Urgent"
+
+        ai_analysis["primary_recommendations"] = [
+            "Arrange prompt medical evaluation for the reported chest or breathing symptoms.",
+            "Discuss the symptoms and assessment measurements with a qualified healthcare professional.",
+            "Do not use the experimental model result alone to determine medical urgency or treatment."
+        ]
+
+    print(
+        "Symptom safety check completed:",
+        ai_analysis["follow_up_urgency"]
+    )
+
+    # =====================================================
     # 9. SAVE PREDICTION TO POSTGRESQL
     # =====================================================
 
