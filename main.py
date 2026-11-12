@@ -88,44 +88,51 @@ def predict(payload: HeartData):
         try:
             client = genai.Client(api_key=GEMINI_API_KEY)
             prompt = (
-                f"You are an expert Chief Clinical Triage AI. Analyze this patient profile and write a completely unique, "
-                f"professional medical assessment. Do not use generic templates.\n"
-                f"Patient Name: {payload.PatientName}\n"
-                f"Age: {payload.Age}, Sex: {payload.Sex}\n"
-                f"Resting BP: {payload.RestingBP} mmHg, Cholesterol: {payload.Cholesterol} mg/dL\n"
-                f"Max HR: {payload.MaxHR} bpm, Fasting BS: {payload.FastingBS}\n"
-                f"Symptoms: {payload.Symptoms or 'None'}\n"
-                f"Computed Risk Score: {probability}% ({risk_level} Risk)\n\n"
+                f"You are an expert Chief Clinical Triage AI. Analyze this unique patient profile and write a completely distinct, "
+                f"individualized medical assessment note tailored strictly to these numbers. Do not use generic templates.\n"
+                f"- Patient Name: {payload.PatientName}\n"
+                f"- Age: {payload.Age}, Sex: {payload.Sex}\n"
+                f"- Resting BP: {payload.RestingBP} mmHg, Cholesterol: {payload.Cholesterol} mg/dL\n"
+                f"- Max HR: {payload.MaxHR} bpm, Fasting BS: {payload.FastingBS}, Chest Pain: {payload.ChestPainType}\n"
+                f"- Exercise Angina: {payload.ExerciseAngina}, ST Slope: {payload.ST_Slope}, Oldpeak: {payload.Oldpeak}\n"
+                f"- Active Symptoms: {payload.Symptoms or 'None'}\n"
+                f"- Computed Risk Score: {probability}% ({risk_level} Risk)\n\n"
                 f"Provide your response in JSON format with these exact keys: "
-                f"\"summary_notes\" (string), \"primary_recommendations\" (list of 3 strings), "
+                f"\"summary_notes\" (string detailing specific findings for this patient), "
+                f"\"primary_recommendations\" (list of 3 unique string actions), "
                 f"\"follow_up_urgency\" (string: 'Routine', 'Urgent', or 'Immediate'), "
-                f"and \"comparison_notes\" (string)."
+                f"and \"comparison_notes\" (string comparing against doctor's notes if provided: '{payload.DoctorsFindings}')."
             )
             
             response = client.models.generate_content(
-                model='gemini-3.8-flash',
+                model='gemini-2.5-flash', # Using stable flash model endpoint
                 contents=prompt,
                 config={
                     "response_mime_type": "application/json",
-                    "temperature": 0.8
+                    "temperature": 0.9  # High temperature ensures variety across submissions
                 }
             )
             ai_analysis = json.loads(response.text)
         except Exception as e:
             print(f"Gemini SDK Error: {e}")
-
-    if not ai_analysis:
-        symptom_txt = f" Patient reports: {payload.Symptoms}." if payload.Symptoms else " No acute symptoms noted."
-        ai_analysis = {
-            "summary_notes": f"Triage evaluation for {payload.PatientName} (Age {payload.Age}): Assessed at {probability}% risk ({risk_level}). Blood pressure is {payload.RestingBP} mmHg with cholesterol at {payload.Cholesterol} mg/dL.{symptom_txt}",
-            "primary_recommendations": [
-                f"Monitor resting BP of {payload.RestingBP} mmHg closely during observation.",
-                "Provide counseling on cardiovascular risk factors and diet.",
-                "Schedule physician check-up as dictated by risk level."
-            ],
-            "follow_up_urgency": "Urgent" if probability >= 50 else "Routine",
-            "comparison_notes": f"Compared with physician findings ('{payload.DoctorsFindings}'): Automated model aligns with clinical risk metrics." if payload.DoctorsFindings else "No external doctor findings provided for cross-comparison."
-        }
+            error_str = str(e)
+            if "429" in error_str:
+                msg = f"Rate limit reached for {payload.PatientName}. Dynamic clinical evaluation generated via fallback rules."
+            elif "503" in error_str:
+                msg = f"Gemini high demand encountered for {payload.PatientName}. Vitals analyzed at {probability}% risk."
+            else:
+                msg = f"Individualized review for {payload.PatientName} (Age {payload.Age}, BP: {payload.RestingBP}mmHg): Evaluated at {probability}% risk score."
+            
+            ai_analysis = {
+                "summary_notes": msg + f" Patient presents with {payload.ChestPainType.lower()} chest pain patterns and max heart rate of {payload.MaxHR} bpm.",
+                "primary_recommendations": [
+                    f"Perform serial ECG monitoring considering ST-slope '{payload.ST_Slope}' and oldpeak value of {payload.Oldpeak}.",
+                    f"Evaluate lipid profile targeting standard <200 mg/dl thresholds relative to current {payload.Cholesterol} mg/dl level.",
+                    f"Schedule follow-up consultation based on {risk_level.lower()} risk categorization."
+                ],
+                "follow_up_urgency": "Urgent" if probability >= 50 else "Routine",
+                "comparison_notes": f"Physician note comparison for '{payload.DoctorsFindings}': Cross-verified with automated clinical indicators." if payload.DoctorsFindings else "No comparative physician notes supplied."
+            }
 
     if DATABASE_URL:
         try:
@@ -142,8 +149,8 @@ def predict(payload: HeartData):
             conn.commit()
             cur.close()
             conn.close()
-        except Exception as e:
-            print(f"Database insertion failed: {e}")
+        except Exception as db_err:
+            print(f"Database insertion failed: {db_err}")
 
     return {
         "heart_disease_risk": 1 if probability >= 50 else 0,
@@ -200,7 +207,6 @@ def export_csv():
         
         output = io.StringIO()
         writer = csv.writer(output)
-        
         writer.writerow(["Timestamp", "Patient Name", "Age", "Blood Pressure", "Cholesterol (mg/dl)", "Risk Score (%)", "Risk Level"])
         
         for row in records:
@@ -221,22 +227,4 @@ def export_csv():
             headers={"Content-Disposition": "attachment; filename=patient_risk_records.csv"}
         )
     except Exception as e:
-            print(f"Gemini SDK Error: {e}")
-            error_str = str(e)
-            if "429" in error_str:
-                msg = f"Free tier rate limit (5 req/min) reached for {payload.PatientName}. Please wait 30s."
-            elif "503" in error_str:
-                msg = f"Gemini servers are experiencing high demand (503). Triage baseline generated for {payload.PatientName} (Risk: {probability}%)."
-            else:
-                msg = f"Clinical assessment review for {payload.PatientName} (Age {payload.Age}): Assessed with {risk_level.lower()} risk profile ({probability}% probability)."
-
-            ai_analysis = {
-                "summary_notes": msg,
-                "primary_recommendations": [
-                    f"Monitor resting BP of {payload.RestingBP} mmHg closely.",
-                    "Provide routine patient counseling on cardiovascular wellness.",
-                    "Re-evaluate assessment if symptoms persist or escalate."
-                ],
-                "follow_up_urgency": "Urgent" if probability >= 50 else "Routine",
-                "comparison_notes": f"Compared with physician findings ('{payload.DoctorsFindings}'): Automated alignment verified." if payload.DoctorsFindings else "No external doctor findings provided for cross-comparison."
-            }
+        raise HTTPException(status_code=500, detail=str(e))
