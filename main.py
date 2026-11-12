@@ -109,8 +109,8 @@ def predict(payload: HeartData):
                 f"and \"comparison_notes\" (string)."
             )
             
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
+           response = client.models.generate_content(
+                model='gemini-3.8-flash',
                 contents=prompt,
                 config={
                     "response_mime_type": "application/json",
