@@ -1,4 +1,3 @@
-
 import os
 import csv
 import io
@@ -17,7 +16,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from google import genai
-
 
 # =========================================================
 # 1. APPLICATION CONFIGURATION
@@ -50,7 +48,6 @@ sys.path.insert(0, str(SUPPORT_DIR))
 
 pipeline = None
 heart_model = None
-
 
 # =========================================================
 # 2. LOAD TRAINED HEALTHRISKFM MODEL
@@ -87,7 +84,6 @@ def load_healthrisk_model():
     print("HealthRiskFM loaded successfully.")
     print("Expected features:", len(heart_model.feature_names_in_))
 
-
 # =========================================================
 # 3. DATABASE CONNECTION
 # =========================================================
@@ -100,7 +96,6 @@ def get_db_connection():
         DATABASE_URL,
         cursor_factory=RealDictCursor
     )
-
 
 def init_db():
     if not DATABASE_URL:
@@ -130,7 +125,6 @@ def init_db():
     finally:
         conn.close()
 
-
 # =========================================================
 # 4. STARTUP
 # =========================================================
@@ -140,7 +134,6 @@ def startup_event():
     load_healthrisk_model()
     init_db()
 
-
 @app.get("/")
 def root():
     return {
@@ -148,7 +141,6 @@ def root():
         "message": "Health Risk Assessor API is active.",
         "model": "HealthRiskFM Random Forest"
     }
-
 
 # =========================================================
 # 5. PATIENT INPUT MODEL
@@ -175,7 +167,6 @@ class HeartData(BaseModel):
 
     DoctorsFindings: str = ""
     Symptoms: str = ""
-
 
 # =========================================================
 # 6. HEALTHRISKFM PREDICTION
@@ -256,7 +247,6 @@ def predict_with_healthriskfm(payload: HeartData):
         "risk_level": risk_level
     }
 
-
 # =========================================================
 # 7. PREDICTION API
 # =========================================================
@@ -281,25 +271,40 @@ def predict(payload: HeartData):
     ai_analysis = None
 
     # =====================================================
-    # 8. GEMINI EXPLANATION
-    # =====================================================
+    # 8. OPTIONAL GEMINI EXPLANATION
+    # Gemini is disabled by default so a temporary Gemini outage cannot
+    # delay or block the HealthRiskFM prediction response.
+    ai_analysis = {
+        "summary_notes": (
+            f"HealthRiskFM classified this assessment as {risk_level}. "
+            f"Its class 1 probability was {probability}%. "
+            "This is an experimental model result, not a medical diagnosis "
+            "or a calibrated clinical risk estimate."
+        ),
+        "primary_recommendations": [
+            "Discuss the assessment results with a qualified healthcare professional.",
+            "Review the patient's symptoms and clinical history.",
+            "Consider further evaluation as advised by a healthcare professional."
+        ],
+        "follow_up_urgency": "Routine",
+        "comparison_notes": (
+            "This is an automatic summary of the Random Forest output. "
+            "Physician findings were not independently verified by the model."
+        )
+    }
 
-    if GEMINI_API_KEY:
+    # Set ENABLE_GEMINI_ANALYSIS=true in Render only if you want to enable
+    # Gemini. It is a single attempt (no retry loop) and any failure falls
+    # back to the summary above.
+    if GEMINI_API_KEY and os.getenv("ENABLE_GEMINI_ANALYSIS", "false").lower() == "true":
+        try:
+            client = genai.Client(api_key=GEMINI_API_KEY)
 
-        max_retries = 3
-        retry_delay = 1.5
-
-        for attempt in range(max_retries):
-
-            try:
-                client = genai.Client(api_key=GEMINI_API_KEY)
-
-                prompt = f"""
+            prompt = f"""
 You are assisting with explanations for an experimental
 heart disease risk assessment system.
 
 The HealthRiskFM Random Forest model produced this result:
-
 Age: {payload.Age}
 Sex: {payload.Sex}
 Resting Blood Pressure: {payload.RestingBP} mmHg
@@ -339,50 +344,23 @@ Return valid JSON with exactly these keys:
 Use Routine, Urgent, or Immediate for follow_up_urgency.
 Do not determine urgency from the model percentage alone.
 """
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "temperature": 0.5
+                }
+            )
+            generated_analysis = json.loads(response.text)
+            if isinstance(generated_analysis, dict):
+                ai_analysis = generated_analysis
+        except Exception as gemini_error:
+            print(
+                "Gemini analysis unavailable; returning the "
+                f"HealthRiskFM result with fallback explanation: {gemini_error}"
+            )
 
-                response = client.models.generate_content(
-                    model="gemini-3.8-flash",
-                    contents=prompt,
-                    config={
-                        "response_mime_type": "application/json",
-                        "temperature": 0.5
-                    }
-                )
-
-                ai_analysis = json.loads(response.text)
-                break
-
-            except Exception as e:
-
-                print(
-                    f"Gemini API attempt {attempt + 1} failed: {e}"
-                )
-
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
-
-                else:
-                    ai_analysis = {
-                        "summary_notes": (
-                            f"HealthRiskFM classified this assessment "
-                            f"as {risk_level}. Its class 1 probability "
-                            f"was {probability}%. This is an experimental "
-                            f"model result, not a medical diagnosis."
-                        ),
-                        "primary_recommendations": [
-                            "Discuss the assessment results with a qualified healthcare professional.",
-                            "Review the patient's symptoms and clinical history.",
-                            "Consider further evaluation as advised by a healthcare professional."
-                        ],
-                        "follow_up_urgency": "Routine",
-                        "comparison_notes": (
-                            "Physician findings were not automatically "
-                            "verified by the AI model."
-                        )
-                    }
-
-    # =====================================================
     # 9. SAVE PREDICTION TO POSTGRESQL
     # =====================================================
 
@@ -450,7 +428,6 @@ Do not determine urgency from the model percentage alone.
         )
     }
 
-
 # =========================================================
 # 11. PREDICTION HISTORY
 # =========================================================
@@ -496,7 +473,6 @@ def get_history():
     finally:
         if conn:
             conn.close()
-
 
 # =========================================================
 # 12. EXPORT PREDICTION HISTORY TO CSV
