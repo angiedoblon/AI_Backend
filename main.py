@@ -89,55 +89,47 @@ def predict(payload: HeartData):
     probability = round(min(max(base_score / 2.8, 10.0), 95.0), 1)
     risk_level = "High" if probability >= 50 else "Low"
     ai_analysis = None
-    
     if GEMINI_API_KEY:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+            from google import genai
+            client = genai.Client(api_key=GEMINI_API_KEY)
             
-            prompt_text = (
-                f"You are an expert Chief Clinical Triage AI. Analyze the following patient data and generate a professional, "
-                f"completely unique medical assessment. You must return your response strictly as a JSON object with exactly these keys: "
-                f"\"summary_notes\" (string), \"primary_recommendations\" (list of strings), \"follow_up_urgency\" (string: 'Routine', 'Urgent', or 'Immediate'), "
-                f"and \"comparison_notes\" (string).\n\n"
+            prompt = (
+                f"You are an expert Chief Clinical Triage AI. Analyze this patient profile and write a completely unique, "
+                f"professional medical assessment. Do not use generic templates.\n"
                 f"Patient Name: {payload.PatientName}\n"
                 f"Age: {payload.Age}, Sex: {payload.Sex}\n"
-                f"Resting BP: {payload.RestingBP} mmHg\n"
-                f"Cholesterol: {payload.Cholesterol} mg/dL\n"
-                f"Max HR: {payload.MaxHR} bpm\n"
-                f"Fasting BS: {payload.FastingBS}\n"
-                f"Symptoms Reported: {payload.Symptoms or 'None'}\n"
-                f"Computed Risk Score: {probability}% ({risk_level} Risk)\n"
-                f"Physician Notes: {payload.DoctorsFindings or 'None'}"
+                f"Resting BP: {payload.RestingBP} mmHg, Cholesterol: {payload.Cholesterol} mg/dL\n"
+                f"Max HR: {payload.MaxHR} bpm, Fasting BS: {payload.FastingBS}\n"
+                f"Symptoms: {payload.Symptoms or 'None'}\n"
+                f"Computed Risk Score: {probability}% ({risk_level} Risk)\n\n"
+                f"Provide your response in JSON format with these exact keys: "
+                f"\"summary_notes\" (string), \"primary_recommendations\" (list of 3 strings), "
+                f"\"follow_up_urgency\" (string: 'Routine', 'Urgent', or 'Immediate'), "
+                f"and \"comparison_notes\" (string)."
             )
             
-            payload_data = {
-                "contents": [{"parts": [{"text": prompt_text}]}],
-                "generationConfig": {
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+                config={
                     "response_mime_type": "application/json",
-                    "temperature": 0.9
+                    "temperature": 0.8
                 }
-            }
-            
-            headers = {"Content-Type": "application/json"}
-            response = requests.post(url, json=payload_data, headers=headers, timeout=15)
-            
-            if response.status_code == 200:
-                res_json = response.json()
-                candidate_text = res_json["candidates"][0]["content"]["parts"][0]["text"]
-                ai_analysis = json.loads(candidate_text)
-            else:
-                print(f"Gemini API HTTP Error Status {response.status_code}: {response.text}")
+            )
+            ai_analysis = json.loads(response.text)
         except Exception as e:
-            print(f"CRITICAL Gemini REST Error: {e}")
-            
+            print(f"Gemini SDK Error: {e}")
+
     if not ai_analysis:
-        symptom_text = f" Patient reports symptoms: {payload.Symptoms}." if payload.Symptoms else " No acute symptoms reported."
+        # Dynamic fallback if network/API hiccups
+        symptom_txt = f" Patient reports: {payload.Symptoms}." if payload.Symptoms else " No acute symptoms noted."
         ai_analysis = {
-            "summary_notes": f"Initial clinical triage review for {payload.PatientName} (Age {payload.Age}): Patient presents a {risk_level.lower()} cardiovascular risk profile ({probability}% probability). Blood pressure is recorded at {payload.RestingBP} mmHg and cholesterol at {payload.Cholesterol} mg/dL.{symptom_text}",
+            "summary_notes": f"Triage evaluation for {payload.PatientName} (Age {payload.Age}): Assessed at {probability}% risk ({risk_level}). Blood pressure is {payload.RestingBP} mmHg with cholesterol at {payload.Cholesterol} mg/dL.{symptom_txt}",
             "primary_recommendations": [
-                f"Monitor hemodynamic parameters closely given resting BP of {payload.RestingBP} mmHg.",
-                "Provide patient education on cardiovascular risk reduction and lifestyle modifications.",
-                "Schedule periodic physician follow-up as indicated by risk tier."
+                f"Monitor resting BP of {payload.RestingBP} mmHg closely during observation.",
+                "Provide counseling on cardiovascular risk factors and diet.",
+                "Schedule physician check-up as dictated by risk level."
             ],
             "follow_up_urgency": "Urgent" if probability >= 50 else "Routine",
             "comparison_notes": f"Compared with physician findings ('{payload.DoctorsFindings}'): Automated model aligns with clinical risk metrics." if payload.DoctorsFindings else "No external doctor findings provided for cross-comparison."
